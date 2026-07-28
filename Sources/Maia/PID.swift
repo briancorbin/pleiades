@@ -109,6 +109,21 @@ public extension PID {
     static let ambientAirTemp = PID(code: 0x46, name: "Ambient air temp", unit: "°C", byteCount: 1) {
         Double($0[0]) - 40
     }
+    static let runTime = PID(code: 0x1F, name: "Run time", unit: "s", byteCount: 2) {
+        Double($0[0]) * 256 + Double($0[1])
+    }
+    static let distanceWithMIL = PID(code: 0x21, name: "Distance with MIL", unit: "km", byteCount: 2) {
+        Double($0[0]) * 256 + Double($0[1])
+    }
+    static let fuelRailPressure = PID(code: 0x23, name: "Fuel rail pressure", unit: "kPa", byteCount: 2) {
+        (Double($0[0]) * 256 + Double($0[1])) * 10
+    }
+    static let distanceSinceCleared = PID(code: 0x31, name: "Distance since codes cleared", unit: "km", byteCount: 2) {
+        Double($0[0]) * 256 + Double($0[1])
+    }
+    static let relativeThrottle = PID(code: 0x45, name: "Relative throttle", unit: "%", byteCount: 1) {
+        Double($0[0]) / 2.55
+    }
     /// Spotty across model years — gate on `supportedPIDs()`.
     static let oilTemp = PID(code: 0x5C, name: "Oil temp", unit: "°C", byteCount: 1) {
         Double($0[0]) - 40
@@ -121,7 +136,8 @@ public extension PID {
     static let all: [PID] = [
         .engineLoad, .coolantTemp, .shortFuelTrim1, .longFuelTrim1,
         .manifoldPressure, .rpm, .speed, .timingAdvance, .intakeAirTemp,
-        .maf, .throttle, .fuelLevel, .barometricPressure, .catalystTempB1S1,
-        .controlModuleVoltage, .ambientAirTemp, .oilTemp, .fuelRate,
+        .maf, .throttle, .runTime, .distanceWithMIL, .fuelRailPressure,
+        .fuelLevel, .distanceSinceCleared, .barometricPressure, .catalystTempB1S1,
+        .controlModuleVoltage, .relativeThrottle, .ambientAirTemp, .oilTemp, .fuelRate,
     ]
 }

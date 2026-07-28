@@ -52,9 +52,43 @@ public actor ELM327Session {
         return supported
     }
 
+    /// Check-engine light state and stored-code count (mode 01, PID 01).
+    public func milStatus() async throws -> MILStatus {
+        let raw = try await transport.send("0101")
+        let payload = try Self.payload(from: raw, mode: 0x01, code: 0x01)
+        guard let a = payload.first else { throw OBDError.malformedResponse(raw) }
+        return MILStatus(milOn: a & 0x80 != 0, dtcCount: Int(a & 0x7F))
+    }
+
+    /// Stored trouble codes (mode 03). Empty when the car is happy.
+    public func readDTCs() async throws -> [DTC] {
+        let raw = try await transport.send("03")
+        var payload: [UInt8]
+        do {
+            payload = try Self.payload(from: raw, mode: 0x03, code: nil)
+        } catch OBDError.noData {
+            return []
+        }
+        // CAN replies lead with a count byte; K-line style doesn't. Tolerate both.
+        if let first = payload.first, Int(first) * 2 == payload.count - 1 {
+            payload = Array(payload.dropFirst())
+        }
+        return stride(from: 0, to: payload.count - 1, by: 2)
+            .map { DTC(bytes: payload[$0], payload[$0 + 1]) }
+            .filter { $0.bytes != (0, 0) }
+    }
+
+    /// Clear stored codes and reset the MIL (mode 04). The ECU relearns fuel
+    /// trims afterward — deliberate action, never polled.
+    public func clearDTCs() async throws {
+        let raw = try await transport.send("04")
+        _ = try Self.payload(from: raw, mode: 0x04, code: nil)
+    }
+
     /// Strip ELM chrome from a raw response and return the payload bytes that
-    /// follow the `mode|0x40, code` reply header.
-    static func payload(from raw: String, mode: UInt8, code: UInt8) throws -> [UInt8] {
+    /// follow the reply header (`mode|0x40`, plus the echoed PID when `code`
+    /// is given — modes 03/04 have no PID byte).
+    static func payload(from raw: String, mode: UInt8, code: UInt8?) throws -> [UInt8] {
         let cleaned = raw
             .replacingOccurrences(of: "SEARCHING...", with: "")
             .replacingOccurrences(of: ">", with: "")
@@ -79,9 +113,15 @@ public actor ELM327Session {
             }
             bytes.append(byte)
         }
-        guard bytes.count >= 2, bytes[0] == mode | 0x40, bytes[1] == code else {
+        guard let first = bytes.first, first == mode | 0x40 else {
             throw OBDError.malformedResponse(raw)
         }
-        return Array(bytes.dropFirst(2))
+        if let code {
+            guard bytes.count >= 2, bytes[1] == code else {
+                throw OBDError.malformedResponse(raw)
+            }
+            return Array(bytes.dropFirst(2))
+        }
+        return Array(bytes.dropFirst(1))
     }
 }

@@ -59,7 +59,9 @@ Two load-bearing rules:
   Ships a curated standard mode-01 catalog (see appendix A).
 - `ELM327Session` — actor speaking the AT/PID dialect over any transport:
   init handshake (`ATZ`, `ATE0`, `ATL0`, `ATS0`, `ATH0`, `ATSP0`), single-PID
-  reads, supported-PID bitmask walk (`0100`/`0120`/…).
+  reads, supported-PID bitmask walk (`0100`/`0120`/…), MIL status (mode 01
+  PID 01), stored-DTC read (mode 03, `DTC` ↔ "P0420" both directions), and
+  code clearing (mode 04 — user-initiated only, never polled).
 - `ELMTCPTransport` — WiFi dongles (raw TCP, conventionally 192.168.0.10:35000).
   Also what the CLI bench tool uses.
 - BLE transport lands with Alcyone (CoreBluetooth wants an app context).
@@ -83,7 +85,7 @@ Two load-bearing rules:
 | **1 — First contact** | BLE dongle on the real Forester | Supported-PID map of the actual FB25D captured into the repo; one logged real drive |
 | **2 — Alcyone** | iPad app: CoreBluetooth transport, gauge dashboard, layouts, logging | Live gauges on the dash of the actual car |
 | **3 — Merope** | ESP32 + CAN transceiver tap; proprietary frame decoding (opendbc Subaru DBC as a head start) | Rear-gate latch state readable; first non-OBD signal on an Alcyone gauge |
-| **4 — Sterope grows up** | Custom thresholds/alerts; gate-open chime handling designed on top of real latch data | TBD after phase 3 findings |
+| **4 — Sterope grows up** | Custom thresholds/alerts; gate-open chime handling designed on top of real latch data | TBD after phase 3 findings. *Started early:* the rules engine (hysteresis triggers over the reading stream) + Alcyone alert banners already run on the bench; Electra injects faults to rehearse the check-engine flow. Chime work still gated on Merope. |
 
 ## Hardware notes
 

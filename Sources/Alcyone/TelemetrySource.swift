@@ -37,4 +37,14 @@ public final class ElectraSource: TelemetrySource, Sendable {
     public func setThrottle(_ pct: Double) async {
         await car.setThrottle(pct)
     }
+
+    /// Cycles through a few classic Subaru codes so the check-engine flow is
+    /// demonstrable from the bench bar.
+    public func injectFault() async {
+        let classics = ["P0420", "P0301", "P0128"]
+        let next = classics[await car.currentFaults().count % classics.count]
+        if let dtc = DTC(next) {
+            await car.injectFault(dtc)
+        }
+    }
 }

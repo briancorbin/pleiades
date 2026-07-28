@@ -1,4 +1,5 @@
 import Foundation
+import Maia
 
 /// A plausible-physics 2022 Forester stand-in. Not a simulation of an FB25 —
 /// just believable enough that gauges, thresholds, and log views built against
@@ -24,6 +25,9 @@ public actor ElectraCar {
         public var baroKPa: Double
         public var catTempC: Double
         public var fuelRateLh: Double
+        public var runTimeS: Double
+        public var distanceSinceClearKm: Double
+        public var distanceWithMILKm: Double
     }
 
     private let ambientC: Double
@@ -34,6 +38,10 @@ public actor ElectraCar {
     private var coolantC: Double
     private var oilTempC: Double
     private var fuelPct: Double = 75
+    private var faults: [DTC] = []
+    private var runTimeS: Double = 0
+    private var distanceSinceClearKm: Double = 128
+    private var distanceWithMILKm: Double = 0
 
     public init(ambientC: Double = 22) {
         self.ambientC = ambientC
@@ -55,6 +63,23 @@ public actor ElectraCar {
         throttlePct = min(max(pct, 0), 100)
     }
 
+    /// Store a trouble code; the MIL lights while any are present.
+    public func injectFault(_ dtc: DTC) {
+        if !faults.contains(dtc) {
+            faults.append(dtc)
+        }
+    }
+
+    public func clearFaults() {
+        faults = []
+        distanceWithMILKm = 0
+        distanceSinceClearKm = 0
+    }
+
+    public func currentFaults() -> [DTC] {
+        faults
+    }
+
     /// Step the model forward. Rates are tuned for feel, not fidelity:
     /// RPM responds in ~a second, speed in tens of seconds, coolant in minutes.
     public func advance(by dt: Double) {
@@ -70,6 +95,12 @@ public actor ElectraCar {
             coolantC.approach(90, rate: dt / 120)
             oilTempC.approach(coolantC + 5, rate: dt / 180)
             fuelPct = max(0, fuelPct - dt * (0.0005 + throttle * 0.002))
+            runTimeS += dt
+            let km = speedKmh * dt / 3600
+            distanceSinceClearKm += km
+            if !faults.isEmpty {
+                distanceWithMILKm += km
+            }
         } else {
             rpm.approach(0, rate: dt * 2)
             speedKmh.approach(0, rate: dt * 0.1)
@@ -99,7 +130,10 @@ public actor ElectraCar {
             fuelPct: fuelPct,
             baroKPa: 101,
             catTempC: warm ? 450 + throttle * 250 : coolantC * 4,
-            fuelRateLh: mafGs * 0.33
+            fuelRateLh: mafGs * 0.33,
+            runTimeS: runTimeS,
+            distanceSinceClearKm: distanceSinceClearKm,
+            distanceWithMILKm: distanceWithMILKm
         )
     }
 }

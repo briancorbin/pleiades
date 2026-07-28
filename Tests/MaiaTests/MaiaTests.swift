@@ -121,3 +121,50 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(supported.count, 17)
     }
 }
+
+final class DTCTests: XCTestCase {
+    func testDecodeFromBytes() {
+        XCTAssertEqual(DTC(bytes: 0x04, 0x20).code, "P0420")
+        XCTAssertEqual(DTC(bytes: 0x43, 0x21).code, "C0321")
+        XCTAssertEqual(DTC(bytes: 0x81, 0x35).code, "B0135")
+        XCTAssertEqual(DTC(bytes: 0xC1, 0x00).code, "U0100")
+    }
+
+    func testStringRoundTrip() {
+        let dtc = DTC("P0420")
+        XCTAssertEqual(dtc?.bytes.0, 0x04)
+        XCTAssertEqual(dtc?.bytes.1, 0x20)
+        XCTAssertNil(DTC("X0420"))
+        XCTAssertNil(DTC("P9420"))
+    }
+
+    func testReadDTCsParsesCountedReply() async throws {
+        let mock = MockAdapter(responses: ["03": "4302042001 28\r\r"])
+        let session = ELM327Session(transport: mock)
+        let dtcs = try await session.readDTCs()
+        XCTAssertEqual(dtcs.map(\.code), ["P0420", "P0128"])
+    }
+
+    func testReadDTCsEmptyWhenHealthy() async throws {
+        let mock = MockAdapter(responses: ["03": "4300\r\r"])
+        let session = ELM327Session(transport: mock)
+        let dtcs = try await session.readDTCs()
+        XCTAssertEqual(dtcs.count, 0)
+    }
+
+    func testMILStatus() async throws {
+        let mock = MockAdapter(responses: ["0101": "410182076504\r\r"])
+        let session = ELM327Session(transport: mock)
+        let status = try await session.milStatus()
+        XCTAssertTrue(status.milOn)
+        XCTAssertEqual(status.dtcCount, 2)
+    }
+
+    func testClearDTCs() async throws {
+        let mock = MockAdapter(responses: ["04": "44\r\r"])
+        let session = ELM327Session(transport: mock)
+        try await session.clearDTCs()
+        let log = await mock.log
+        XCTAssertEqual(log, ["04"])
+    }
+}

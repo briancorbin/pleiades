@@ -1,4 +1,5 @@
 import Maia
+import Sterope
 import SwiftUI
 
 /// The Alcyone dashboard. Platform-agnostic: the same view runs in the macOS
@@ -20,6 +21,8 @@ public struct DashboardView: View {
     public var body: some View {
         VStack(spacing: 18) {
             header
+            alertBanners
+            dtcRow
             HStack(spacing: 24) {
                 RadialGauge(
                     label: "RPM",
@@ -101,6 +104,73 @@ public struct DashboardView: View {
         }
     }
 
+    @ViewBuilder
+    private var alertBanners: some View {
+        if !model.alerts.isEmpty {
+            VStack(spacing: 8) {
+                ForEach(model.alerts) { alert in
+                    alertRow(alert)
+                }
+            }
+        }
+    }
+
+    private func alertRow(_ alert: Sterope.Alert) -> some View {
+        let isCritical = alert.severity == .critical
+        let color: Color = isCritical ? Theme.redline : Theme.copper
+        let icon = isCritical ? "exclamationmark.octagon.fill" : "exclamationmark.triangle.fill"
+        let valueText = String(format: "%.0f %@", alert.value, alert.unit)
+        return HStack(spacing: 10) {
+            Image(systemName: icon)
+            Text(alert.message)
+                .font(.system(size: 13, weight: .semibold))
+            Spacer()
+            Text(valueText)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(color.opacity(0.5)))
+    }
+
+    @ViewBuilder
+    private var dtcRow: some View {
+        if model.mil?.milOn == true || !model.dtcs.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: "engine.combustion.fill")
+                    .foregroundStyle(Theme.redline)
+                Text("CHECK ENGINE")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.5)
+                    .foregroundStyle(Theme.redline)
+                ForEach(model.dtcs, id: \.code) { dtc in
+                    dtcChip(dtc)
+                }
+                Spacer()
+                Button("Clear codes") {
+                    Task { await model.clearDTCs() }
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.redline)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Theme.redline.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private func dtcChip(_ dtc: DTC) -> some View {
+        Text(dtc.code)
+            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .foregroundStyle(Theme.text)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Theme.surface, in: Capsule())
+    }
+
     private var benchBar: some View {
         HStack(spacing: 16) {
             Button(engineOn ? "Stop engine" : "Start engine") {
@@ -121,6 +191,12 @@ public struct DashboardView: View {
                 .onChange(of: throttle) { value in
                     Task { await bench?.setThrottle(value) }
                 }
+
+            Button("Inject fault") {
+                Task { await bench?.injectFault() }
+            }
+            .buttonStyle(.bordered)
+            .tint(Theme.copper)
 
             Spacer()
 

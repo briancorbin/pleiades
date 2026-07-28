@@ -14,8 +14,45 @@ final class PipelineTests: XCTestCase {
         let supported = try await session.supportedPIDs()
         let catalog = Set(PID.all.map(\.code))
         XCTAssertTrue(supported.isSuperset(of: catalog))
-        // Catalog plus the two next-page markers (20, 40).
-        XCTAssertEqual(supported.count, catalog.count + 2)
+        // Catalog plus PID 01 (MIL) and the two next-page markers (20, 40).
+        XCTAssertEqual(supported.count, catalog.count + 3)
+    }
+
+    func testFaultInjectionLightsTheMIL() async throws {
+        let car = ElectraCar()
+        let session = ELM327Session(transport: ELM327Emulator(car: car))
+
+        var status = try await session.milStatus()
+        var dtcs = try await session.readDTCs()
+        XCTAssertFalse(status.milOn)
+        XCTAssertEqual(dtcs, [])
+
+        await car.injectFault(DTC("P0420")!)
+        status = try await session.milStatus()
+        dtcs = try await session.readDTCs()
+        XCTAssertTrue(status.milOn)
+        XCTAssertEqual(status.dtcCount, 1)
+        XCTAssertEqual(dtcs.map(\.code), ["P0420"])
+
+        try await session.clearDTCs()
+        status = try await session.milStatus()
+        dtcs = try await session.readDTCs()
+        XCTAssertFalse(status.milOn)
+        XCTAssertEqual(dtcs, [])
+    }
+
+    func testRunTimeAndDistanceAccumulate() async throws {
+        let car = ElectraCar()
+        await car.startEngine()
+        await car.setThrottle(40)
+        for _ in 0..<60 {
+            await car.advance(by: 1)
+        }
+        let session = ELM327Session(transport: ELM327Emulator(car: car))
+        let runTime = try await session.read(.runTime)
+        XCTAssertEqual(runTime.value, 60, accuracy: 1)
+        let snapshot = await car.snapshot()
+        XCTAssertGreaterThan(snapshot.distanceSinceClearKm, 128)
     }
 
     func testIdleRPMReadsThroughSession() async throws {
