@@ -10,6 +10,7 @@ public struct DiagnosticsView: View {
 
     @AppStorage("alcyone.imperial") private var imperial = false
     @State private var confirmingClear = false
+    @State private var expandedOccurrence: UUID?
 
     public init(model: TelemetryModel, bench: ElectraSource? = nil) {
         self.model = model
@@ -173,7 +174,8 @@ public struct DiagnosticsView: View {
 
     @ViewBuilder
     private var historySection: some View {
-        if !model.history.isEmpty {
+        let occurrences = model.history.occurrences()
+        if !occurrences.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("HISTORY")
@@ -181,12 +183,12 @@ public struct DiagnosticsView: View {
                         .tracking(1.2)
                         .foregroundStyle(Theme.textDim)
                     Spacer()
-                    Text("survives code clearing")
+                    Text("survives code clearing · tap for detail")
                         .font(.system(size: 10))
                         .foregroundStyle(Theme.textDim)
                 }
-                ForEach(model.history.prefix(20)) { event in
-                    historyRow(event)
+                ForEach(occurrences.prefix(20)) { occurrence in
+                    occurrenceRow(occurrence)
                 }
             }
             .padding(14)
@@ -194,27 +196,107 @@ public struct DiagnosticsView: View {
         }
     }
 
-    private func historyRow(_ event: DTCEvent) -> some View {
-        let stored = event.kind == .stored
-        return HStack(spacing: 10) {
-            Image(systemName: stored ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+    private func occurrenceRow(_ occurrence: FaultOccurrence) -> some View {
+        let expanded = expandedOccurrence == occurrence.id
+        return VStack(alignment: .leading, spacing: 10) {
+            occurrenceHeader(occurrence, expanded: expanded)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        expandedOccurrence = expanded ? nil : occurrence.id
+                    }
+                }
+            if expanded {
+                occurrenceDetail(occurrence)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func occurrenceHeader(_ occurrence: FaultOccurrence, expanded: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: occurrence.isActive ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
                 .font(.system(size: 12))
-                .foregroundStyle(stored ? Theme.copper : Theme.textDim)
-            Text(event.code)
+                .foregroundStyle(occurrence.isActive ? Theme.copper : Theme.textDim)
+            Text(occurrence.code)
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .foregroundStyle(Theme.text)
-            Text(event.title)
+            Text(occurrence.title)
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textDim)
                 .lineLimit(1)
             Spacer()
-            Text(stored ? "stored" : "cleared")
+            Text(occurrence.isActive ? "active" : "cleared")
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(stored ? Theme.copper : Theme.textDim)
-            Text(event.date.formatted(date: .abbreviated, time: .shortened))
+                .foregroundStyle(occurrence.isActive ? Theme.copper : Theme.textDim)
+            Text(occurrence.storedAt.formatted(date: .abbreviated, time: .shortened))
                 .font(.system(size: 10))
                 .monospacedDigit()
                 .foregroundStyle(Theme.textDim)
+            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Theme.textDim)
+        }
+    }
+
+    private func occurrenceDetail(_ occurrence: FaultOccurrence) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            occurrenceDates(occurrence)
+            if let info = DTC(occurrence.code)?.info, !info.likelyCauses.isEmpty {
+                causesSection(info)
+            }
+            occurrenceFreezeFrame(occurrence)
+            if let window = occurrence.window, !window.isEmpty {
+                WindowChartView(window: window)
+            }
+        }
+        .padding(.leading, 22)
+    }
+
+    private func occurrenceDates(_ occurrence: FaultOccurrence) -> some View {
+        HStack(spacing: 14) {
+            Text("Stored \(occurrence.storedAt.formatted(date: .abbreviated, time: .shortened))")
+            if let cleared = occurrence.clearedAt {
+                Text("Cleared \(cleared.formatted(date: .abbreviated, time: .shortened))")
+            }
+            Spacer()
+        }
+        .font(.system(size: 11))
+        .monospacedDigit()
+        .foregroundStyle(Theme.textDim)
+    }
+
+    @ViewBuilder
+    private func occurrenceFreezeFrame(_ occurrence: FaultOccurrence) -> some View {
+        if let frame = occurrence.freezeFrame, !frame.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("AT TIME OF FAULT")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(Theme.copper)
+                HStack(spacing: 16) {
+                    ForEach(model.freezeFramePIDs, id: \.code) { pid in
+                        archivedFreezeStat(pid, frame: frame)
+                    }
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func archivedFreezeStat(_ pid: PID, frame: [String: Double]) -> some View {
+        if let value = frame[String(format: "%02X", pid.code)] {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(String(format: "%.0f %@", value, pid.unit))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.text)
+                Text(pid.name.uppercased())
+                    .font(.system(size: 8, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(Theme.textDim)
+            }
         }
     }
 

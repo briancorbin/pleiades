@@ -34,15 +34,33 @@ public final class TelemetryModel: ObservableObject {
     private var loop: Task<Void, Never>?
     private var isInitialized = false
 
+    // The Merope pattern in Swift: while the app is connected it keeps its
+    // own rolling telemetry ring, so fault events get a pre/post window, not
+    // just the ECU's single-instant freeze frame.
+    private struct RingEntry {
+        let date: Date
+        let pid: UInt8
+        let value: Double
+    }
+
+    private var ring: [RingEntry] = []
+    private var pendingWindows: [(eventID: UUID, trigger: Date)] = []
+    private let windowPre: TimeInterval
+    private let windowPost: TimeInterval
+
     public init(
         source: any TelemetrySource,
         rules: [AlertRule] = .foresterDefaults,
-        historyDirectory: URL? = nil
+        historyDirectory: URL? = nil,
+        windowPre: TimeInterval = 45,
+        windowPost: TimeInterval = 15
     ) {
         self.source = source
         self.sourceLabel = source.label
         self.sterope = SteropeEngine(rules: rules)
         self.eventStore = DTCEventStore(directory: historyDirectory)
+        self.windowPre = windowPre
+        self.windowPost = windowPost
     }
 
     public func start() {
@@ -72,10 +90,16 @@ public final class TelemetryModel: ObservableObject {
         await source.tick(dt: 0.1)
         var pids: [PID] = fast ? fastPIDs : []
         if slow { pids += slowPIDs }
+        let now = Date()
         for pid in pids {
             if let reading = try? await source.session.read(pid) {
                 readings[pid.code] = reading.value
+                ring.append(RingEntry(date: now, pid: pid.code, value: reading.value))
             }
+        }
+        let cutoff = now.addingTimeInterval(-(windowPre + windowPost + 30))
+        while let first = ring.first, first.date < cutoff {
+            ring.removeFirst()
         }
         if slow {
             mil = try? await source.session.milStatus()
@@ -84,6 +108,7 @@ public final class TelemetryModel: ObservableObject {
             await recordTransitions(from: dtcs, to: current)
             dtcs = current
         }
+        await flushDueWindows()
         alerts = sterope.evaluate(readings)
     }
 
@@ -124,7 +149,9 @@ public final class TelemetryModel: ObservableObject {
             let frame = freezeDTC?.code == dtc.code && !freezeFrame.isEmpty
                 ? Dictionary(uniqueKeysWithValues: freezeFrame.map { (String(format: "%02X", $0.key), $0.value) })
                 : nil
-            await eventStore.record(DTCEvent(kind: .stored, code: dtc.code, title: dtc.info.title, freezeFrame: frame))
+            let event = DTCEvent(kind: .stored, code: dtc.code, title: dtc.info.title, freezeFrame: frame)
+            await eventStore.record(event)
+            pendingWindows.append((eventID: event.id, trigger: event.date))
             changed = true
         }
         for dtc in old where !newCodes.contains(dtc.code) {
@@ -132,6 +159,38 @@ public final class TelemetryModel: ObservableObject {
             await eventStore.record(DTCEvent(kind: .cleared, code: dtc.code, title: dtc.info.title))
             changed = true
         }
+        if changed {
+            history = await eventStore.all()
+        }
+    }
+
+    /// Once a fault's post-window has elapsed, cut its slice out of the ring
+    /// and attach it to the archived event.
+    private func flushDueWindows() async {
+        guard !pendingWindows.isEmpty else { return }
+        let now = Date()
+        var remaining: [(eventID: UUID, trigger: Date)] = []
+        var changed = false
+        for pending in pendingWindows {
+            guard now.timeIntervalSince(pending.trigger) >= windowPost else {
+                remaining.append(pending)
+                continue
+            }
+            let start = pending.trigger.addingTimeInterval(-windowPre)
+            let end = pending.trigger.addingTimeInterval(windowPost)
+            let samples = ring
+                .filter { $0.date >= start && $0.date <= end }
+                .map {
+                    WindowSample(
+                        t: $0.date.timeIntervalSince(pending.trigger),
+                        pid: String(format: "%02X", $0.pid),
+                        value: $0.value
+                    )
+                }
+            await eventStore.attachWindow(samples, toEventID: pending.eventID)
+            changed = true
+        }
+        pendingWindows = remaining
         if changed {
             history = await eventStore.all()
         }

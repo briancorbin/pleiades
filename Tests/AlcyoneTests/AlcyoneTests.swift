@@ -112,3 +112,32 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(model.history.count, 2)
     }
 }
+
+@MainActor
+final class WindowCaptureTests: XCTestCase {
+    func testFaultEventGainsTelemetryWindow() async {
+        let source = ElectraSource()
+        await source.setEngine(on: true)
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("alcyone-window-\(UUID().uuidString)", isDirectory: true)
+        // Post-window of 0 so the window flushes on the same poll that
+        // detects the fault; pre-window comfortably covers the test run.
+        let model = TelemetryModel(source: source, historyDirectory: dir, windowPre: 60, windowPost: 0)
+
+        await source.setThrottle(50)
+        for _ in 0..<5 {
+            await source.car.advance(by: 1)
+            await model.poll(fast: true, slow: false)  // fill the ring
+        }
+        await source.injectFault()
+        await model.poll(fast: true, slow: true)
+
+        let occurrence = model.history.occurrences().first
+        XCTAssertNotNil(occurrence)
+        XCTAssertTrue(occurrence!.isActive)
+        let window = occurrence?.window ?? []
+        XCTAssertFalse(window.isEmpty)
+        XCTAssertTrue(window.contains { $0.pid == "0C" })      // rpm in the movie
+        XCTAssertTrue(window.allSatisfy { $0.t <= 0.5 })       // pre-trigger data
+    }
+}
