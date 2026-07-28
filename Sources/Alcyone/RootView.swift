@@ -24,6 +24,8 @@ public struct RootView: View {
             AlertsView(model: model, store: ruleStore)
                 .tabItem { Label("Alerts", systemImage: "bolt.fill") }
                 .badge(model.alerts.count)
+            DrivesView(model: model)
+                .tabItem { Label("Drives", systemImage: "car.fill") }
         }
         .background(Theme.background)
     }

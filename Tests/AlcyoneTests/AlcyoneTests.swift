@@ -175,3 +175,42 @@ final class RuleSwappingTests: XCTestCase {
         XCTAssertEqual(model.alerts.map(\.id), ["custom.rpm"])
     }
 }
+
+@MainActor
+final class DriveRecordingTests: XCTestCase {
+    func testRecordingCapturesPollsAndSurvivesStop() async {
+        let source = ElectraSource()
+        await source.setEngine(on: true)
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("alcyone-drives-\(UUID().uuidString)", isDirectory: true)
+        // Flush interval 0 → every poll writes through, no waiting in tests.
+        let model = TelemetryModel(source: source, drivesDirectory: dir, driveFlushInterval: 0)
+
+        await model.startRecording()
+        XCTAssertTrue(model.isRecording)
+        for _ in 0..<3 {
+            await source.car.advance(by: 1)
+            await model.poll(fast: true, slow: false)
+        }
+        await model.stopRecording()
+        XCTAssertFalse(model.isRecording)
+
+        let sessions = await model.driveStore.list()
+        XCTAssertEqual(sessions.count, 1)
+        let session = sessions[0]
+        XCTAssertNotNil(session.endedAt)
+        XCTAssertTrue(session.samples.contains { $0.pid == "0C" })  // rpm logged
+        XCTAssertGreaterThanOrEqual(session.samples.count, 12)      // 3 polls × 4 fast PIDs
+    }
+
+    func testNotRecordingLogsNothing() async {
+        let source = ElectraSource()
+        await source.setEngine(on: true)
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("alcyone-drives-\(UUID().uuidString)", isDirectory: true)
+        let model = TelemetryModel(source: source, drivesDirectory: dir)
+        await model.poll(fast: true, slow: true)
+        let sessions = await model.driveStore.list()
+        XCTAssertEqual(sessions.count, 0)
+    }
+}

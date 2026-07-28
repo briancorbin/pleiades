@@ -88,3 +88,56 @@ final class OccurrenceTests: XCTestCase {
         XCTAssertEqual(events.first?.window?.first?.t, -1)
     }
 }
+
+final class DriveStoreTests: XCTestCase {
+    private func scratchDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("celaeno-drives-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    func testRecordAndReloadSession() async {
+        let dir = scratchDirectory()
+        let store = DriveStore(directory: dir)
+        await store.begin()
+        await store.append([
+            DriveSample(t: 0.1, pid: "0C", value: 650),
+            DriveSample(t: 0.2, pid: "0C", value: 700),
+        ])
+        await store.append([DriveSample(t: 0.3, pid: "0D", value: 5)])
+        let ended = await store.end()
+        XCTAssertNotNil(ended?.endedAt)
+
+        let reloaded = DriveStore(directory: dir)
+        let sessions = await reloaded.list()
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions[0].samples.count, 3)
+        XCTAssertEqual(sessions[0].samples.last?.pid, "0D")
+    }
+
+    func testListNewestFirstAndDelete() async {
+        let dir = scratchDirectory()
+        let store = DriveStore(directory: dir)
+        let first = await store.begin()
+        await store.end()
+        try? await Task.sleep(for: .milliseconds(20))
+        await store.begin()
+        await store.end()
+
+        var sessions = await store.list()
+        XCTAssertEqual(sessions.count, 2)
+        // ISO8601 persistence has whole-second resolution, so near-simultaneous
+        // sessions can tie — newest-first just can't be ascending.
+        XCTAssertTrue(sessions[0].startedAt >= sessions[1].startedAt)
+
+        await store.delete(first.id)
+        sessions = await store.list()
+        XCTAssertEqual(sessions.count, 1)
+    }
+
+    func testAppendWithoutActiveSessionIsIgnored() async {
+        let store = DriveStore(directory: scratchDirectory())
+        await store.append([DriveSample(t: 0, pid: "0C", value: 1)])
+        let sessions = await store.list()
+        XCTAssertEqual(sessions.count, 0)
+    }
+}

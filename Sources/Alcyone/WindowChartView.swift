@@ -9,6 +9,11 @@ import SwiftUI
 /// the fault marker.
 struct WindowChartView: View {
     let window: [WindowSample]
+    var title = "FAULT WINDOW"
+    var subtitle = "t=0 is the fault"
+    var showTriggerRule = true
+    var xLabel = "seconds from fault"
+
     @State private var selectedPID = "0C"
 
     private static let pidNames: [String: (name: String, unit: String)] =
@@ -47,11 +52,11 @@ struct WindowChartView: View {
 
     private var header: some View {
         HStack {
-            Text("FAULT WINDOW")
+            Text(title)
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(1.2)
                 .foregroundStyle(Theme.copper)
-            Text("t=0 is the fault")
+            Text(subtitle)
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.textDim)
             Spacer()
@@ -68,9 +73,11 @@ struct WindowChartView: View {
     private var chart: some View {
         let unit = Self.pidNames[selectedPID]?.unit ?? ""
         return Chart {
-            RuleMark(x: .value("Fault", 0))
-                .foregroundStyle(Theme.redline.opacity(0.7))
-                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            if showTriggerRule {
+                RuleMark(x: .value("Fault", 0))
+                    .foregroundStyle(Theme.redline.opacity(0.7))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            }
             ForEach(Array(samples.enumerated()), id: \.offset) { _, sample in
                 LineMark(
                     x: .value("Seconds", sample.t),
@@ -98,7 +105,7 @@ struct WindowChartView: View {
             }
         }
         .chartXAxisLabel(alignment: .trailing) {
-            Text("seconds from fault")
+            Text(xLabel)
                 .font(.system(size: 9))
                 .foregroundStyle(Theme.textDim)
         }

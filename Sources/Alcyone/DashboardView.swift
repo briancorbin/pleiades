@@ -89,6 +89,15 @@ public struct DashboardView: View {
             Text("✦")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.copper)
+            if model.isRecording {
+                HStack(spacing: 4) {
+                    Circle().fill(Theme.redline).frame(width: 6, height: 6)
+                    Text("REC")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1)
+                        .foregroundStyle(Theme.redline)
+                }
+            }
             Spacer()
             Text(model.sourceLabel.uppercased())
                 .font(.system(size: 10, weight: .semibold))

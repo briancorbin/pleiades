@@ -50,21 +50,52 @@ public final class TelemetryModel: ObservableObject {
 
     private let ruleStore: RuleStore?
 
+    // Drive recording: while on, every decoded reading also lands in the
+    // active DriveSession, flushed to disk in batches.
+    @Published public private(set) var isRecording = false
+    public let driveStore: DriveStore
+    private var driveStart: Date?
+    private var driveBuffer: [DriveSample] = []
+    private var lastDriveFlush = Date()
+    private let driveFlushInterval: TimeInterval
+
     public init(
         source: any TelemetrySource,
         rules: [AlertRule] = .foresterDefaults,
         ruleStore: RuleStore? = nil,
         historyDirectory: URL? = nil,
+        drivesDirectory: URL? = nil,
         windowPre: TimeInterval = 45,
-        windowPost: TimeInterval = 15
+        windowPost: TimeInterval = 15,
+        driveFlushInterval: TimeInterval = 5
     ) {
         self.source = source
         self.sourceLabel = source.label
         self.sterope = SteropeEngine(rules: rules)
         self.ruleStore = ruleStore
         self.eventStore = DTCEventStore(directory: historyDirectory)
+        self.driveStore = DriveStore(directory: drivesDirectory)
         self.windowPre = windowPre
         self.windowPost = windowPost
+        self.driveFlushInterval = driveFlushInterval
+    }
+
+    public func startRecording() async {
+        guard !isRecording else { return }
+        let session = await driveStore.begin()
+        driveStart = session.startedAt
+        driveBuffer = []
+        lastDriveFlush = Date()
+        isRecording = true
+    }
+
+    public func stopRecording() async {
+        guard isRecording else { return }
+        await driveStore.append(driveBuffer)
+        driveBuffer = []
+        await driveStore.end()
+        driveStart = nil
+        isRecording = false
     }
 
     /// Swap the live rule set (e.g. after edits in the Alerts tab).
@@ -109,7 +140,19 @@ public final class TelemetryModel: ObservableObject {
             if let reading = try? await source.session.read(pid) {
                 readings[pid.code] = reading.value
                 ring.append(RingEntry(date: now, pid: pid.code, value: reading.value))
+                if isRecording, let driveStart {
+                    driveBuffer.append(DriveSample(
+                        t: now.timeIntervalSince(driveStart),
+                        pid: String(format: "%02X", pid.code),
+                        value: reading.value
+                    ))
+                }
             }
+        }
+        if isRecording, now.timeIntervalSince(lastDriveFlush) >= driveFlushInterval {
+            await driveStore.append(driveBuffer)
+            driveBuffer = []
+            lastDriveFlush = now
         }
         let cutoff = now.addingTimeInterval(-(windowPre + windowPost + 30))
         while let first = ring.first, first.date < cutoff {
