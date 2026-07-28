@@ -182,6 +182,55 @@ Transmit CAN frames asserting "gate closed" so the cluster never chimes.
   machine. You'd be debugging emergent weirdness in unrelated systems. Route
   3 gets the same outcome by cutting one wire that nothing else listens to.
 
+## The chosen path: route 3, staged
+
+Decision (2026-07-28): modifying the cluster's *logic* isn't worth the risk —
+that board also stores the odometer and may sit in the immobilizer chain.
+Intercepting its speaker output is. Build it in stages, cheapest first.
+
+### The principle: wire a connector, not a switch
+
+Do the irreversible work once. Interrupt the transducer feed and bring both
+leads to a small 2-pin connector (JST/Molex) somewhere reachable behind the
+dash. What plugs into that connector is then a reversible decision, forever:
+
+| Plug | Behavior | Effort |
+|---|---|---|
+| Shorting jumper | Stock car | — |
+| Toggle switch | **v1** — loud / mute (/ quiet) | an hour |
+| Attenuator pot | v2 — continuous volume | trivial once v1 exists |
+| S3 interception board | v3 — per-chime control + substitution | the real project |
+
+The cluster comes out exactly once. Everything after is a plug swap in the
+footwell.
+
+### v1: the manual switch
+
+- **Switch:** ON-OFF-ON toggle. One throw direct (full volume), center off
+  (muted), other throw through a series resistor (quiet). Start around
+  100 Ω–1 kΩ for a dynamic speaker and tune by ear; a piezo wants a much
+  higher value, so measure before buying resistors.
+- **Never short the two leads together** — open is safe for the driver stage,
+  a short is not. The switch interrupts; it never bridges.
+- **Mounting:** anywhere reachable — knee panel, coin tray, a blank switch
+  position. It doesn't need to be pretty, it needs to be reachable from the
+  driver's seat mid-lumber-run.
+- **Scope:** this mutes *every* cluster chime together — gate, seatbelt, turn
+  signal, the lot. Per-chime selectivity is what v3 buys.
+
+### What to measure while the cluster is out
+
+The teardown answers questions the rest of the design depends on:
+
+- [ ] Piezo or dynamic speaker? (Determines resistor values now and the amp
+  topology later.)
+- [ ] Is the transducer on a connector or soldered to the board? (Determines
+  whether interception is unplug-and-splice or lift-a-leg.)
+- [ ] Impedance across the terminals with the car off.
+- [ ] Scope/record the waveform of two or three different chimes — the raw
+  material for v3's classifier, captured while everything is already apart.
+- [ ] Photograph the board, note the MCU part number.
+
 ## Recommended sequencing
 
 1. **Now:** Alcyone's own alert layer — done. Per-rule sound, volume, on/off,
