@@ -244,3 +244,29 @@ final class DatasetLookupTests: XCTestCase {
         XCTAssertFalse(info.likelyCauses.isEmpty)
     }
 }
+
+final class ELMFramerTests: XCTestCase {
+    func testSingleCompleteResponse() {
+        var framer = ELMFramer()
+        XCTAssertEqual(framer.consume("410C1AF8\r\r>"), ["410C1AF8\r\r"])
+    }
+
+    func testResponseSplitAcrossChunks() {
+        var framer = ELMFramer()
+        XCTAssertEqual(framer.consume("410C"), [])
+        XCTAssertEqual(framer.consume("1AF8\r"), [])
+        XCTAssertEqual(framer.consume("\r>"), ["410C1AF8\r\r"])
+    }
+
+    func testMultipleResponsesInOneChunk() {
+        var framer = ELMFramer()
+        let responses = framer.consume("OK\r>41055A\r>")
+        XCTAssertEqual(responses, ["OK\r", "41055A\r"])
+    }
+
+    func testTrailingPartialStaysBuffered() {
+        var framer = ELMFramer()
+        XCTAssertEqual(framer.consume("OK\r>410C"), ["OK\r"])
+        XCTAssertEqual(framer.consume("1AF8>"), ["410C1AF8"])
+    }
+}

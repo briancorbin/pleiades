@@ -8,14 +8,20 @@ import SwiftUI
 public struct DashboardView: View {
     @ObservedObject var model: TelemetryModel
     let bench: ElectraSource?
+    let sourceSelection: Binding<String>?
 
     @AppStorage("alcyone.imperial") private var imperial = false
     @State private var throttle = 0.0
     @State private var engineOn = false
 
-    public init(model: TelemetryModel, bench: ElectraSource? = nil) {
+    public init(
+        model: TelemetryModel,
+        bench: ElectraSource? = nil,
+        sourceSelection: Binding<String>? = nil
+    ) {
         self.model = model
         self.bench = bench
+        self.sourceSelection = sourceSelection
     }
 
     public var body: some View {
@@ -99,18 +105,36 @@ public struct DashboardView: View {
                 }
             }
             Spacer()
-            Text(model.sourceLabel.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(1.5)
-                .foregroundStyle(bench == nil ? Theme.text : Theme.copper)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .overlay(
-                    Capsule().strokeBorder(
-                        (bench == nil ? Theme.text : Theme.copper).opacity(0.4)
-                    )
-                )
+            if let sourceSelection {
+                Menu {
+                    ForEach(TelemetrySourceKind.available, id: \.rawValue) { kind in
+                        Button(kind.displayName) {
+                            sourceSelection.wrappedValue = kind.rawValue
+                        }
+                    }
+                } label: {
+                    sourceBadge
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            } else {
+                sourceBadge
+            }
         }
+    }
+
+    private var sourceBadge: some View {
+        Text(model.sourceLabel.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(1.5)
+            .foregroundStyle(bench == nil ? Theme.text : Theme.copper)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .overlay(
+                Capsule().strokeBorder(
+                    (bench == nil ? Theme.text : Theme.copper).opacity(0.4)
+                )
+            )
     }
 
     @ViewBuilder
