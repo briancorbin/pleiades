@@ -145,3 +145,46 @@ final class RuleStoreTests: XCTestCase {
         XCTAssertEqual(loaded.count, StoredRule.defaults().count)
     }
 }
+
+final class AlertSoundPersistenceTests: XCTestCase {
+    func testSoundAndVolumeSurviveStoredRuleRoundTrip() throws {
+        let rule = AlertRule(
+            id: "r", pid: .coolantTemp, trigger: .above(100), clearMargin: 4,
+            severity: .warning, message: "hot",
+            sound: .file("airhorn.wav"), volume: 0.4
+        )
+        let stored = StoredRule(from: rule)
+        XCTAssertEqual(stored.sound, .file("airhorn.wav"))
+        XCTAssertEqual(stored.volume, 0.4)
+
+        let data = try JSONEncoder().encode([stored])
+        let decoded = try JSONDecoder().decode([StoredRule].self, from: data)
+        XCTAssertEqual(decoded.first?.sound, .file("airhorn.wav"))
+        XCTAssertEqual(decoded.first?.alertRule()?.volume, 0.4)
+    }
+
+    func testLegacyRuleFileWithoutSoundDecodes() throws {
+        let json = """
+        [{"id":"old","pidCode":5,"kind":"above","limit":100,"clearMargin":4,
+          "severity":"warning","message":"legacy","enabled":true}]
+        """
+        let decoded = try JSONDecoder().decode([StoredRule].self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.first?.sound, .silent)
+        XCTAssertEqual(decoded.first?.volume, 1.0)
+    }
+
+    func testEngineReportsRisingEdgeOnly() {
+        let rule = AlertRule(
+            id: "edge", pid: .rpm, trigger: .above(1000), clearMargin: 100,
+            severity: .warning, message: "up", sound: .builtIn("chime")
+        )
+        var engine = SteropeEngine(rules: [rule])
+        _ = engine.evaluate([PID.rpm.code: 2000])
+        XCTAssertEqual(engine.started.map(\.id), ["edge"])
+        _ = engine.evaluate([PID.rpm.code: 2100])
+        XCTAssertEqual(engine.started.count, 0)  // still firing, not new
+        _ = engine.evaluate([PID.rpm.code: 500])
+        _ = engine.evaluate([PID.rpm.code: 2000])
+        XCTAssertEqual(engine.started.map(\.id), ["edge"])
+    }
+}

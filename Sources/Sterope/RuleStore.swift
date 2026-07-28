@@ -18,6 +18,9 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
     public var severity: Severity
     public var message: String
     public var enabled: Bool
+    public var sound: AlertSound
+    /// 0…1.
+    public var volume: Double
 
     public init(
         id: String = UUID().uuidString,
@@ -27,7 +30,9 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
         clearMargin: Double,
         severity: Severity,
         message: String,
-        enabled: Bool = true
+        enabled: Bool = true,
+        sound: AlertSound = .silent,
+        volume: Double = 1.0
     ) {
         self.id = id
         self.pidCode = pidCode
@@ -37,6 +42,23 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
         self.severity = severity
         self.message = message
         self.enabled = enabled
+        self.sound = sound
+        self.volume = volume
+    }
+
+    // Rule files written before sounds existed decode with the defaults.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        pidCode = try c.decode(UInt8.self, forKey: .pidCode)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        limit = try c.decode(Double.self, forKey: .limit)
+        clearMargin = try c.decode(Double.self, forKey: .clearMargin)
+        severity = try c.decode(Severity.self, forKey: .severity)
+        message = try c.decode(String.self, forKey: .message)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        sound = try c.decodeIfPresent(AlertSound.self, forKey: .sound) ?? .silent
+        volume = try c.decodeIfPresent(Double.self, forKey: .volume) ?? 1.0
     }
 
     public init(from rule: AlertRule, enabled: Bool = true) {
@@ -53,7 +75,8 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
         self.init(
             id: rule.id, pidCode: rule.pid.code, kind: kind, limit: limit,
             clearMargin: rule.clearMargin, severity: rule.severity,
-            message: rule.message, enabled: enabled
+            message: rule.message, enabled: enabled,
+            sound: rule.sound, volume: rule.volume
         )
     }
 
@@ -67,7 +90,8 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
         return AlertRule(
             id: id, pid: pid,
             trigger: kind == .above ? .above(limit) : .below(limit),
-            clearMargin: clearMargin, severity: severity, message: message
+            clearMargin: clearMargin, severity: severity, message: message,
+            sound: sound, volume: volume
         )
     }
 

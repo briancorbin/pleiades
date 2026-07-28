@@ -214,3 +214,83 @@ final class DriveRecordingTests: XCTestCase {
         XCTAssertEqual(sessions.count, 0)
     }
 }
+
+@MainActor
+final class AlertSoundTests: XCTestCase {
+    private func model(_ player: SilentSoundPlayer, rules: [AlertRule]) -> (TelemetryModel, ElectraSource) {
+        let source = ElectraSource()
+        return (TelemetryModel(source: source, rules: rules, soundPlayer: player), source)
+    }
+
+    private var loudRule: AlertRule {
+        AlertRule(
+            id: "test.rpm", pid: .rpm, trigger: .above(100), clearMargin: 10,
+            severity: .warning, message: "spinning",
+            sound: .builtIn("alert"), volume: 0.5
+        )
+    }
+
+    func testSoundPlaysOnceOnRisingEdge() async {
+        let player = SilentSoundPlayer()
+        let (model, source) = model(player, rules: [loudRule])
+        await source.setEngine(on: true)
+
+        await model.poll(fast: true, slow: false)
+        XCTAssertEqual(player.played.count, 1)
+        XCTAssertEqual(player.played.first?.sound, .builtIn("alert"))
+
+        // Still firing on later polls — must not re-play.
+        await model.poll(fast: true, slow: false)
+        await model.poll(fast: true, slow: false)
+        XCTAssertEqual(player.played.count, 1)
+    }
+
+    func testSoundReplaysAfterAlertClearsAndReturns() async {
+        let player = SilentSoundPlayer()
+        let (model, source) = model(player, rules: [loudRule])
+        await source.setEngine(on: true)
+        await model.poll(fast: true, slow: false)
+        XCTAssertEqual(player.played.count, 1)
+
+        await source.setEngine(on: false)
+        for _ in 0..<5 {
+            await source.car.advance(by: 1)
+            await model.poll(fast: true, slow: false)
+        }
+        await source.setEngine(on: true)
+        await model.poll(fast: true, slow: false)
+        XCTAssertEqual(player.played.count, 2)
+    }
+
+    func testMasterSwitchSilencesEverything() async {
+        let player = SilentSoundPlayer()
+        let (model, source) = model(player, rules: [loudRule])
+        model.soundEnabled = false
+        await source.setEngine(on: true)
+        await model.poll(fast: true, slow: false)
+        XCTAssertTrue(model.alerts.count > 0)   // still alerts visually
+        XCTAssertEqual(player.played.count, 0)  // just silently
+    }
+
+    func testMasterVolumeScalesRuleVolume() async {
+        let player = SilentSoundPlayer()
+        let (model, source) = model(player, rules: [loudRule])
+        model.masterVolume = 0.5
+        await source.setEngine(on: true)
+        await model.poll(fast: true, slow: false)
+        XCTAssertEqual(player.played.first?.volume ?? 0, 0.25, accuracy: 0.001)
+    }
+
+    func testSilentRuleMakesNoSound() async {
+        let silent = AlertRule(
+            id: "test.quiet", pid: .rpm, trigger: .above(100), clearMargin: 10,
+            severity: .warning, message: "quiet", sound: .silent
+        )
+        let player = SilentSoundPlayer()
+        let (model, source) = model(player, rules: [silent])
+        await source.setEngine(on: true)
+        await model.poll(fast: true, slow: false)
+        XCTAssertEqual(model.alerts.count, 1)
+        XCTAssertEqual(player.played.count, 0)
+    }
+}

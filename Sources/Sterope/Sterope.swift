@@ -22,6 +22,11 @@ public struct AlertRule: Sendable, Identifiable {
     public let clearMargin: Double
     public let severity: Severity
     public let message: String
+    /// Played once when the alert starts firing.
+    public let sound: AlertSound
+    /// 0…1. Independent of the sound choice, so muting volume and choosing
+    /// `.silent` are separate decisions.
+    public let volume: Double
 
     public init(
         id: String,
@@ -29,7 +34,9 @@ public struct AlertRule: Sendable, Identifiable {
         trigger: Trigger,
         clearMargin: Double,
         severity: Severity,
-        message: String
+        message: String,
+        sound: AlertSound = .silent,
+        volume: Double = 1.0
     ) {
         self.id = id
         self.pid = pid
@@ -37,6 +44,8 @@ public struct AlertRule: Sendable, Identifiable {
         self.clearMargin = clearMargin
         self.severity = severity
         self.message = message
+        self.sound = sound
+        self.volume = volume
     }
 }
 
@@ -46,6 +55,8 @@ public struct Alert: Sendable, Identifiable, Equatable {
     public let message: String
     public let value: Double
     public let unit: String
+    public let sound: AlertSound
+    public let volume: Double
 }
 
 /// Evaluates rules against each poll's readings, tracking which alerts are
@@ -54,12 +65,17 @@ public struct SteropeEngine: Sendable {
     public let rules: [AlertRule]
     private var active: Set<String> = []
 
+    /// Alerts that started firing on the most recent `evaluate` — the rising
+    /// edge, so sound plays once per event instead of once per poll.
+    public private(set) var started: [Alert] = []
+
     public init(rules: [AlertRule]) {
         self.rules = rules
     }
 
     public mutating func evaluate(_ readings: [UInt8: Double]) -> [Alert] {
         var alerts: [Alert] = []
+        var justStarted: [Alert] = []
         for rule in rules {
             guard let value = readings[rule.pid.code] else { continue }
             let wasActive = active.contains(rule.id)
@@ -72,17 +88,24 @@ public struct SteropeEngine: Sendable {
             }
             if firing {
                 active.insert(rule.id)
-                alerts.append(Alert(
+                let alert = Alert(
                     id: rule.id,
                     severity: rule.severity,
                     message: rule.message,
                     value: value,
-                    unit: rule.pid.unit
-                ))
+                    unit: rule.pid.unit,
+                    sound: rule.sound,
+                    volume: rule.volume
+                )
+                alerts.append(alert)
+                if !wasActive {
+                    justStarted.append(alert)
+                }
             } else {
                 active.remove(rule.id)
             }
         }
+        started = justStarted
         return alerts
     }
 }
@@ -92,20 +115,20 @@ public extension Array where Element == AlertRule {
     /// units; tune against real-drive logs in phase 1.
     static let foresterDefaults: [AlertRule] = [
         AlertRule(id: "coolant.hot", pid: .coolantTemp, trigger: .above(108), clearMargin: 4,
-                  severity: .warning, message: "Coolant running hot"),
+                  severity: .warning, message: "Coolant running hot", sound: .builtIn("alert")),
         AlertRule(id: "coolant.overheat", pid: .coolantTemp, trigger: .above(116), clearMargin: 4,
-                  severity: .critical, message: "Coolant overheating — pull over"),
+                  severity: .critical, message: "Coolant overheating — pull over", sound: .builtIn("urgent")),
         AlertRule(id: "oil.hot", pid: .oilTemp, trigger: .above(125), clearMargin: 5,
-                  severity: .warning, message: "Oil temp high"),
+                  severity: .warning, message: "Oil temp high", sound: .builtIn("alert")),
         AlertRule(id: "voltage.low", pid: .controlModuleVoltage, trigger: .below(12.0), clearMargin: 0.3,
-                  severity: .warning, message: "Charging voltage low"),
+                  severity: .warning, message: "Charging voltage low", sound: .builtIn("soft")),
         AlertRule(id: "voltage.critical", pid: .controlModuleVoltage, trigger: .below(11.6), clearMargin: 0.3,
-                  severity: .critical, message: "Battery not charging"),
+                  severity: .critical, message: "Battery not charging", sound: .builtIn("urgent")),
         AlertRule(id: "rpm.redline", pid: .rpm, trigger: .above(6100), clearMargin: 300,
-                  severity: .warning, message: "Redline"),
+                  severity: .warning, message: "Redline", sound: .builtIn("chime")),
         AlertRule(id: "fuel.low", pid: .fuelLevel, trigger: .below(15), clearMargin: 3,
-                  severity: .warning, message: "Fuel low"),
+                  severity: .warning, message: "Fuel low", sound: .builtIn("soft")),
         AlertRule(id: "fuel.critical", pid: .fuelLevel, trigger: .below(8), clearMargin: 2,
-                  severity: .critical, message: "Fuel critical"),
+                  severity: .critical, message: "Fuel critical", sound: .builtIn("alert")),
     ]
 }

@@ -59,12 +59,21 @@ public final class TelemetryModel: ObservableObject {
     private var lastDriveFlush = Date()
     private let driveFlushInterval: TimeInterval
 
+    /// Master switch for Alcyone's alert audio. Off means no alert makes a
+    /// sound, whatever the individual rules say.
+    @Published public var soundEnabled = true
+    /// Scales every alert's own volume.
+    @Published public var masterVolume: Double = 1.0
+
+    private let soundPlayer: any AlertSoundPlaying
+
     public init(
         source: any TelemetrySource,
         rules: [AlertRule] = .foresterDefaults,
         ruleStore: RuleStore? = nil,
         historyDirectory: URL? = nil,
         drivesDirectory: URL? = nil,
+        soundPlayer: (any AlertSoundPlaying)? = nil,
         windowPre: TimeInterval = 45,
         windowPost: TimeInterval = 15,
         driveFlushInterval: TimeInterval = 5
@@ -75,6 +84,11 @@ public final class TelemetryModel: ObservableObject {
         self.ruleStore = ruleStore
         self.eventStore = DTCEventStore(directory: historyDirectory)
         self.driveStore = DriveStore(directory: drivesDirectory)
+        #if canImport(AVFoundation)
+        self.soundPlayer = soundPlayer ?? SystemAlertSoundPlayer()
+        #else
+        self.soundPlayer = soundPlayer ?? SilentSoundPlayer()
+        #endif
         self.windowPre = windowPre
         self.windowPost = windowPost
         self.driveFlushInterval = driveFlushInterval
@@ -103,6 +117,7 @@ public final class TelemetryModel: ObservableObject {
     public func setRules(_ rules: [AlertRule]) {
         sterope = SteropeEngine(rules: rules)
         alerts = sterope.evaluate(readings)
+        // No sound here: re-evaluating after an edit isn't a new event.
     }
 
     public func start() {
@@ -167,6 +182,21 @@ public final class TelemetryModel: ObservableObject {
         }
         await flushDueWindows()
         alerts = sterope.evaluate(readings)
+        playSounds(for: sterope.started)
+    }
+
+    /// Sound plays on the rising edge only — once per event, not once per
+    /// poll. Master switch and master volume gate every rule.
+    private func playSounds(for started: [Alert]) {
+        guard soundEnabled, masterVolume > 0 else { return }
+        for alert in started where alert.sound != .silent {
+            soundPlayer.play(alert.sound, volume: alert.volume * masterVolume)
+        }
+    }
+
+    /// Preview a sound from the rule editor.
+    public func preview(_ sound: AlertSound, volume: Double) {
+        soundPlayer.play(sound, volume: volume * masterVolume)
     }
 
     /// Deliberate user action from the DTC row — clears codes and re-reads.
