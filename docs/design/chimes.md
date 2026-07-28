@@ -127,9 +127,11 @@ body integrated unit. With the right DIDs we could flip them from Merope.
 - **Cost:** finding the DIDs (sniff an SSM session, or community reverse
   engineering), plus a TX path — Merope becomes a bus writer, which is a
   deliberate departure from listen-only and needs its own design pass.
-- **Risk:** real. A wrong DID/value can misconfigure or brick a module, and
-  body units are not cheap. Do it with the car parked, battery healthy, and
-  a known-good rollback value recorded first.
+- **Risk:** worse than "the beep is wrong." These modules also hold odometer
+  values (written redundantly across cluster/ECM/body unit for cross-checked
+  fraud detection) and participate in the immobilizer chain. A bad DID/value
+  can leave the car not starting, not merely misconfigured. Car parked,
+  battery healthy, known-good values recorded before any write.
 
 ### 3. Cluster speaker interception — the total-control route
 
@@ -154,10 +156,18 @@ Two flavors:
   classification work (each chime has a distinct frequency/cadence pattern,
   so a small FFT or envelope matcher can tell them apart); an audio out
   stage. Not reversible in five minutes.
-- **Risk:** it's your dash. Warranty implications on the cluster. Nothing
-  safety-critical *breaks* — the visual warnings, the ADAS itself, and the
-  head-unit alerts are all untouched — but you own what you can no longer
-  hear.
+- **Risk:** it's your dash, and warranty implications on the cluster — but
+  note what this route *doesn't* touch. The meter also drives every gauge and
+  telltale, renders the MFD, computes trip data, stores the authoritative
+  odometer, and may participate in the immobilizer chain. Tapping the speaker
+  feed leaves all of that alone: no firmware write, no module reconfiguration,
+  electrically just a switch on an output. That's the argument for this route
+  over 2 and 4 — most control, least intrusion into anything load-bearing.
+  Nothing safety-critical *breaks* either: visual warnings, the ADAS itself,
+  and head-unit alerts are untouched. You own what you can no longer hear.
+- **Caution:** you'll be soldering on a board that stores legally significant
+  data (odometer). Practice on a junkyard cluster first — a $60 mistake
+  instead of a consequential one.
 
 ### 4. Gateway spoofing — the one I'd argue against on engineering grounds
 
