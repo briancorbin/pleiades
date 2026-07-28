@@ -11,7 +11,7 @@ six stars. So the platform is the cluster and the components are the sisters:
 |---|---|---|
 | **Maia** | Core library — ELM327 protocol, PID catalog, decoding, transports | phase 0 ✅ |
 | **Electra** | Bench simulator — a fake car behind a fake ELM327 | phase 0 ✅ |
-| **Alcyone** | The iPad app (SwiftUI gauges) | phase 2 |
+| **Alcyone** | The iPad app (SwiftUI gauges) | phase 2 🚧 — dashboard runs on macOS against Electra |
 | **Merope** | Hardwired CAN tap (ESP32) for Subaru's proprietary frames | phase 3 |
 | **Sterope** | Alert/threshold engine | phase 4 |
 
@@ -22,6 +22,8 @@ Full design: [docs/design/architecture.md](docs/design/architecture.md)
 ```sh
 swift test              # everything is testable with zero hardware
 swift run pleiades demo # watch the fake Forester cold-start and take a pull
+swift run alcyone       # the gauge dashboard in a window, driving Electra —
+                        # start the engine, drag the throttle
 ```
 
 With a WiFi ELM327 dongle plugged into the real car:
