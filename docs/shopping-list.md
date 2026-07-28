@@ -15,10 +15,9 @@ Check things off as they land.*
   gate for the real FB25 PID map, the CoreBluetooth transport, and live gauges
   in the driveway. Nothing else substitutes (iPads can't do BT-Classic).
 
-## Merope desk bench (~$10, mostly owned already)
+## Merope desk bench — ✅ fully covered
 
-- [ ] **Dupont jumper wires** (F-F for the breakouts) if not on hand (~$6)
-- [ ] Breadboard — optional, the transceiver breakouts can also hang off jumpers
+- [x] Jumper wires, breadboards, resistors — Brian's existing electronics stash
 - [x] Termination — covered by the Waveshare boards
 
 ## Merope goes in the car (~$35)
@@ -31,7 +30,7 @@ Check things off as they land.*
   pin 16 is always-hot battery
 - [ ] **Small project box** (~$8) + 3M Dual Lock / velcro + zip ties — behind
   the dash trim, invisible from the cabin (Merope is the star that hides)
-- [ ] 22 AWG silicone hookup wire + heat shrink, if the bin is empty (~$10)
+- [x] Hookup wire + heat shrink — existing stash
 
 ## Alcyone lives in the cabin (~$25–45)
 
@@ -54,4 +53,5 @@ Check things off as they land.*
 Soldering iron, multimeter, wire strippers, USB-C cables, screwdrivers
 (including the one that famously tricks the gate latch).
 
-**Remaining core spend: ~$80. Everything: ~$130.**
+**Remaining core spend: ~$65 (dongle + Y-splitter + buck + fuse + box).
+Everything incl. iPad mount: ~$100. Desk bench: $0 — ready on arrival.**
