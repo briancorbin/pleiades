@@ -25,6 +25,86 @@ The recurring theme: **the sound is generated downstream of the CAN state we
 can see.** Merope watching "gate is ajar" doesn't put us anywhere near the
 transducer that beeps about it.
 
+## Signal path: buckle switch → noise
+
+Worked example for the seatbelt reminder, because it's the most instructive
+chain. General Subaru Global Platform architecture; the ✱ items need the FSM
+wiring diagram or a meter on the actual car to confirm.
+
+```
+  [driver buckle switch]  mechanical/Hall contact, switched to ground
+          │ discrete wire ✱ (to meter directly, or via the body unit)
+          │
+  [passenger buckle] + [occupant classification]  seat weight/ODS
+          │ → airbag control module (ACM) ─── CAN ───┐
+          │                                          │
+  [rear buckles] ──── body integrated unit ── CAN ───┤
+                                                     │
+  [wheel speed] → VDC/ABS ──────────────── CAN ──────┤
+  [ignition state] → body unit ──────────── CAN ─────┤
+  [gear position] → TCM ─────────────────── CAN ─────┤
+                                                     ▼
+                              ┌──────────────────────────────────┐
+                              │      COMBINATION METER           │
+                              │  warning state machine:          │
+                              │  belt + speed + ignition + gear   │
+                              │  + FMVSS 208 escalation timing   │
+                              │            ↓                     │
+                              │  MCU tone generator (PWM/DAC)    │
+                              │            ↓                     │
+                              │  amplifier stage                 │
+                              │            ↓                     │
+                              │  piezo buzzer or small speaker ✱ │
+                              └──────────────────────────────────┘
+                                             ↓
+                                        actual noise
+```
+
+### The three consequences that matter
+
+**1. There is no "sound the chime" message on the bus.** The decision and the
+transducer live in the same box. Everything on CAN upstream is *input* to the
+meter's state machine — speed, ignition, gear, belt status — and the meter
+decides internally. So no amount of CAN listening tells us "a chime is
+starting"; we can only infer it from the same inputs the meter used. This is
+the whole reason route 3 exists.
+
+**2. Some inputs never touch CAN.** The driver's buckle switch is plausibly a
+discrete wire into the meter ✱. Belt *status* is usually rebroadcast on CAN
+anyway (airbag logic, telematics, and NCAP reporting all want it), so Merope
+will likely see it — but "likely" is doing work there, and recon settles it.
+
+**3. Interception has exactly three candidate points**, and they're wildly
+different in cost:
+
+| Point | What it looks like | Notes |
+|---|---|---|
+| **Input** | Fake the belt state — the classic buckle-defeat tongue, or a resistor at the switch | Trivially easy for seatbelt specifically; per-chime, and only works where the input is a discrete wire we can reach. Also lies to the airbag logic, which reads the same switch. |
+| **Logic** | Reflash/reconfigure the meter's state machine | Not accessible. Dealer settings (route 1) are the sanctioned sliver of this. |
+| **Output** | Intercept the speaker feed | The only point downstream of *every* decision — one tap covers all cluster chimes, and it's where substitution becomes possible. |
+
+### Output-stage design notes (for SHED-79)
+
+- **Classification.** With the feed intercepted we hear "a chime is playing"
+  but not which one. Two hints available: the waveform itself (each chime has
+  a distinct frequency/cadence signature) and Merope's CAN state ("speed just
+  crossed the threshold with a belt unbuckled" → seatbelt reminder). The CAN
+  hint is far more reliable; the waveform is the fallback for chimes whose
+  trigger isn't visible.
+- **Latency.** To substitute cleanly, detection has to be fast enough that
+  only a few ms of the factory tone leaks. An envelope detector on the
+  speaker line triggers in ~1–5 ms and an analog switch mutes fast, so worst
+  case is a faint click before our sample starts.
+- **Fail-safe direction.** Cutting the feed means a dead or unpowered board
+  silences *every* cluster chime silently. The interception relay should
+  default to **pass-through when unpowered**, so a failure returns the car to
+  stock behavior rather than to a car that never beeps.
+- **Piezo vs speaker ✱** determines the whole circuit: a piezo is a
+  high-impedance load driven by a square wave (easy to detect, awkward to
+  drive with arbitrary audio), a dynamic speaker is a normal low-impedance
+  load (a small class-D amp does the substitution job directly). Confirm
+  before designing the board.
+
 ## The four routes
 
 ### 1. Dealer settings (SSM) — legitimate, limited, free
