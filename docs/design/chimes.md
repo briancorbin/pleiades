@@ -204,6 +204,25 @@ dash. What plugs into that connector is then a reversible decision, forever:
 The cluster comes out exactly once. Everything after is a plug swap in the
 footwell.
 
+### How much board work? Two cases
+
+The transducer lives inside the cluster assembly — there is no chime wire
+running through the car, so the cluster comes out either way. But whether you
+touch the PCB depends on how the transducer is attached:
+
+| Found | Interception | Board work |
+|---|---|---|
+| **Speaker on a pigtail + 2-pin header** | Unplug it, put your harness inline | **None.** The connector already exists; you're just adding a plug. |
+| **Piezo soldered through-hole** | Lift one leg, wire from the leg and the empty pad | Two joints on a through-hole part. Minor. |
+
+The risk in this build was never "difficult soldering" — it's "don't damage a
+module that stores the odometer." If it turns out to be a pigtail, there's
+nothing to damage at all.
+
+Adjacent exception worth knowing: the **keyless-entry beep** often comes from
+a separate buzzer under the dash with an ordinary harness. If that's the
+offender, it's an inline splice with no cluster removal at all.
+
 ### v1: the manual switch
 
 - **Switch:** ON-OFF-ON toggle. One throw direct (full volume), center off
