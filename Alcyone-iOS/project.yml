@@ -1,0 +1,33 @@
+# Declarative Xcode project for the iPad shell. The .xcodeproj is generated,
+# not checked in:
+#
+#     cd Alcyone-iOS && xcodegen generate && open Alcyone.xcodeproj
+#
+# Then set your signing team once under Signing & Capabilities and run to the
+# iPad. All real code lives in the Alcyone SwiftPM library; this shell should
+# stay thin enough to never be interesting.
+name: Alcyone
+options:
+  bundleIdPrefix: com.briancorbin.pleiades
+  deploymentTarget:
+    iOS: "16.0"
+packages:
+  pleiades:
+    path: ..
+targets:
+  Alcyone:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    dependencies:
+      - package: pleiades
+        product: Alcyone
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        # Phase-1 forward: CoreBluetooth for the BLE dongle.
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: Alcyone talks to the OBD-II adapter over Bluetooth.

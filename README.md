@@ -26,6 +26,14 @@ swift run alcyone       # the gauge dashboard in a window, driving Electra —
                         # start the engine, drag the throttle
 ```
 
+On the iPad (drives Electra until the dongle arrives):
+
+```sh
+brew install xcodegen   # once
+cd Alcyone-iOS && xcodegen generate && open Alcyone.xcodeproj
+# set your signing team once, then run to the iPad
+```
+
 With a WiFi ELM327 dongle plugged into the real car:
 
 ```sh
