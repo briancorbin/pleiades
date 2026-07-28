@@ -18,7 +18,7 @@ struct AlcyoneApp: App {
 
     var body: some Scene {
         WindowGroup("Alcyone ✦ Electra bench") {
-            DashboardView(model: model, bench: source)
+            RootView(model: model, bench: source)
                 .frame(minWidth: 860, minHeight: 720)
                 .onAppear {
                     NSApplication.shared.setActivationPolicy(.regular)

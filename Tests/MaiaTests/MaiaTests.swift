@@ -168,3 +168,31 @@ final class DTCTests: XCTestCase {
         XCTAssertEqual(log, ["04"])
     }
 }
+
+final class DTCKnowledgeTests: XCTestCase {
+    func testKnownCodeHasSpecificEntry() {
+        let info = DTC("P0420")!.info
+        XCTAssertFalse(info.isGeneric)
+        XCTAssertTrue(info.title.contains("Catalyst"))
+        XCTAssertFalse(info.likelyCauses.isEmpty)
+    }
+
+    func testUnknownGenericCodeFallsBackToSAEFamily() {
+        let info = DTC("P0333")!.info
+        XCTAssertTrue(info.isGeneric)
+        XCTAssertEqual(info.title, "Ignition system or misfire")
+    }
+
+    func testManufacturerSpecificFallback() {
+        let info = DTC("P1443")!.info
+        XCTAssertTrue(info.isGeneric)
+        XCTAssertTrue(info.title.contains("Manufacturer-specific"))
+    }
+
+    func testSystemNames() {
+        XCTAssertEqual(DTC("P0420")!.system, "Powertrain")
+        XCTAssertEqual(DTC("C0123")!.system, "Chassis")
+        XCTAssertEqual(DTC("B0001")!.system, "Body")
+        XCTAssertEqual(DTC("U0100")!.system, "Network")
+    }
+}

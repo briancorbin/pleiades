@@ -16,6 +16,7 @@ public final class TelemetryModel: ObservableObject {
     public let slowPIDs: [PID] = [
         .coolantTemp, .oilTemp, .controlModuleVoltage, .intakeAirTemp,
         .ambientAirTemp, .fuelLevel, .manifoldPressure, .timingAdvance,
+        .runTime, .distanceWithMIL, .distanceSinceCleared,
     ]
 
     public let sourceLabel: String

@@ -4,6 +4,10 @@ public enum Units {
         kmh * 0.621371
     }
 
+    public static func miles(_ km: Double) -> Double {
+        km * 0.621371
+    }
+
     public static func fahrenheit(_ celsius: Double) -> Double {
         celsius * 9 / 5 + 32
     }

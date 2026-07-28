@@ -16,7 +16,7 @@ struct AlcyoneIOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            DashboardView(model: model, bench: source)
+            RootView(model: model, bench: source)
                 .onAppear { model.start() }
         }
     }
