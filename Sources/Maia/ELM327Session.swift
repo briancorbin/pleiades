@@ -78,6 +78,36 @@ public actor ELM327Session {
             .filter { $0.bytes != (0, 0) }
     }
 
+    /// Read one PID from a freeze frame (mode 02) — the sensor snapshot the
+    /// ECU captured at the instant the code set.
+    public func readFreezeFrame(_ pid: PID, frame: UInt8 = 0) async throws -> OBDReading {
+        let raw = try await transport.send(String(format: "02%02X%02X", pid.code, frame))
+        var payload = try Self.payload(from: raw, mode: 0x02, code: pid.code)
+        guard payload.first == frame else { throw OBDError.malformedResponse(raw) }
+        payload = Array(payload.dropFirst())
+        guard payload.count >= pid.byteCount else { throw OBDError.malformedResponse(raw) }
+        return OBDReading(pid: pid, value: pid.decode(Array(payload.prefix(pid.byteCount))))
+    }
+
+    /// The code that triggered the freeze frame (mode 02, PID 02), or nil
+    /// when no frame is stored.
+    public func freezeFrameDTC(frame: UInt8 = 0) async throws -> DTC? {
+        let raw = try await transport.send(String(format: "0202%02X", frame))
+        var payload: [UInt8]
+        do {
+            payload = try Self.payload(from: raw, mode: 0x02, code: 0x02)
+        } catch OBDError.noData {
+            return nil
+        }
+        guard payload.first == frame else { throw OBDError.malformedResponse(raw) }
+        payload = Array(payload.dropFirst())
+        guard payload.count >= 2 else { throw OBDError.malformedResponse(raw) }
+        if payload[0] == 0, payload[1] == 0 {
+            return nil
+        }
+        return DTC(bytes: payload[0], payload[1])
+    }
+
     /// Clear stored codes and reset the MIL (mode 04). The ECU relearns fuel
     /// trims afterward — deliberate action, never polled.
     public func clearDTCs() async throws {

@@ -71,3 +71,44 @@ final class UnitsTests: XCTestCase {
         XCTAssertEqual(Units.fahrenheit(-40), -40)
     }
 }
+
+@MainActor
+final class HistoryTests: XCTestCase {
+    private func scratchDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("alcyone-tests-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    func testStoredEventArchivedWithFreezeFrame() async {
+        let source = ElectraSource()
+        await source.setEngine(on: true)
+        let model = TelemetryModel(source: source, historyDirectory: scratchDirectory())
+        await model.poll(fast: true, slow: true)  // baseline, healthy
+
+        await source.injectFault()
+        await model.poll(fast: true, slow: true)
+        XCTAssertEqual(model.history.count, 1)
+        XCTAssertEqual(model.history.first?.kind, .stored)
+        XCTAssertEqual(model.history.first?.code, "P0420")
+        XCTAssertNotNil(model.history.first?.freezeFrame?["0C"])
+        XCTAssertEqual(model.freezeDTC?.code, "P0420")
+    }
+
+    func testHistorySurvivesClearingCodes() async {
+        let source = ElectraSource()
+        await source.setEngine(on: true)
+        let model = TelemetryModel(source: source, historyDirectory: scratchDirectory())
+        await source.injectFault()
+        await model.poll(fast: true, slow: true)
+
+        await model.clearDTCs()
+        XCTAssertEqual(model.dtcs.count, 0)
+        XCTAssertNil(model.freezeDTC)
+        XCTAssertEqual(model.history.count, 2)  // stored + cleared, both kept
+        XCTAssertEqual(model.history.first?.kind, .cleared)
+
+        // Another poll must not duplicate anything.
+        await model.poll(fast: true, slow: true)
+        XCTAssertEqual(model.history.count, 2)
+    }
+}

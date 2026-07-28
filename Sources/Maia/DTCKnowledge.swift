@@ -1,6 +1,9 @@
+import Foundation
+
 /// Human-readable interpretation of a trouble code. Specific entries for
-/// codes worth knowing cold (with Subaru-flavored causes); everything else
-/// falls back to the SAE code structure, which always decodes to *something*.
+/// codes worth knowing cold (with Subaru-flavored causes); then the bundled
+/// 9,400-code dataset; everything else falls back to the SAE code structure,
+/// which always decodes to *something*.
 public struct DTCInfo: Sendable, Equatable {
     public let title: String
     public let likelyCauses: [String]
@@ -15,12 +18,35 @@ public extension DTC {
 }
 
 enum DTCKnowledge {
+    /// Resolution order: curated entry (has causes) → Subaru-specific dataset
+    /// → generic SAE dataset → structural fallback from the code digits.
     static func lookup(_ code: String) -> DTCInfo {
         if let known = known[code] {
             return known
         }
+        if let subaru = dataset.subaru[code] {
+            return DTCInfo(title: "\(subaru) (Subaru)", likelyCauses: [], isGeneric: false)
+        }
+        if let generic = dataset.generic[code] {
+            return DTCInfo(title: generic, likelyCauses: [], isGeneric: false)
+        }
         return DTCInfo(title: fallbackTitle(for: code), likelyCauses: [], isGeneric: true)
     }
+
+    /// Bundled descriptions vendored from Wal33D/dtc-database (MIT) — see
+    /// Resources/ATTRIBUTION.md.
+    private struct Dataset: Decodable {
+        let generic: [String: String]
+        let subaru: [String: String]
+    }
+
+    private static let dataset: Dataset = {
+        guard let url = Bundle.module.url(forResource: "dtc-codes", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let db = try? JSONDecoder().decode(Dataset.self, from: data)
+        else { return Dataset(generic: [:], subaru: [:]) }
+        return db
+    }()
 
     static func system(of code: String) -> String {
         switch code.first {

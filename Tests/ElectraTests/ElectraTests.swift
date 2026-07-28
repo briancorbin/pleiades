@@ -116,3 +116,35 @@ final class CarModelTests: XCTestCase {
         XCTAssertEqual(snapshot.voltage, 12.4)
     }
 }
+
+final class FreezeFrameElectraTests: XCTestCase {
+    func testInjectCapturesTheMomentNotTheLiveState() async throws {
+        let car = ElectraCar()
+        let session = ELM327Session(transport: ELM327Emulator(car: car))
+        await car.startEngine()
+        await car.setThrottle(70)
+        await car.advance(by: 2)  // revving hard
+        await car.injectFault(DTC("P0301")!)
+        await car.setThrottle(0)
+        for _ in 0..<10 {
+            await car.advance(by: 1)  // back at idle
+        }
+
+        let live = try await session.read(.rpm)
+        let frozen = try await session.readFreezeFrame(.rpm)
+        XCTAssertLessThan(live.value, 1000)
+        XCTAssertGreaterThan(frozen.value, 3000)
+
+        let trigger = try await session.freezeFrameDTC()
+        XCTAssertEqual(trigger?.code, "P0301")
+    }
+
+    func testClearWipesFreezeFrame() async throws {
+        let car = ElectraCar()
+        let session = ELM327Session(transport: ELM327Emulator(car: car))
+        await car.injectFault(DTC("P0420")!)
+        try await session.clearDTCs()
+        let trigger = try await session.freezeFrameDTC()
+        XCTAssertNil(trigger)
+    }
+}

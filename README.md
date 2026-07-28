@@ -12,6 +12,7 @@ six stars. So the platform is the cluster and the components are the sisters:
 | **Maia** | Core library — ELM327 protocol, PID catalog, decoding, transports | phase 0 ✅ |
 | **Electra** | Bench simulator — a fake car behind a fake ELM327 | phase 0 ✅ |
 | **Alcyone** | The iPad app (SwiftUI gauges) | phase 2 🚧 — dashboard runs on macOS against Electra |
+| **Celaeno** | Fault-event archive — history that survives code clearing | born early 🌑 |
 | **Merope** | Hardwired CAN tap (ESP32) for Subaru's proprietary frames | phase 3 |
 | **Sterope** | Alert/threshold engine | born early ⚡ — hysteresis rules + alert banners live on the bench |
 

@@ -32,25 +32,52 @@ public actor ELM327Emulator: OBDTransport {
             return "44\r\r"
         }
 
+        // Mode 02: freeze frame — answered from the snapshot captured at
+        // injectFault time, not the live car.
+        if cmd.count == 6, cmd.hasPrefix("02") {
+            let chars = Array(cmd)
+            guard let code = UInt8(String(chars[2...3]), radix: 16),
+                  let frame = UInt8(String(chars[4...5]), radix: 16)
+            else { return "?\r\r" }
+            guard frame == 0, let freeze = await car.freezeFrame() else {
+                return "NO DATA\r\r"
+            }
+            if code == 0x02 {
+                return reply(mode: 0x42, header: [code, 0], payload: [freeze.dtc.bytes.0, freeze.dtc.bytes.1])
+            }
+            guard let payload = encode(code, from: freeze.snapshot) else {
+                return "NO DATA\r\r"
+            }
+            return reply(mode: 0x42, header: [code, 0], payload: payload)
+        }
+
         guard cmd.count == 4, cmd.hasPrefix("01"), let code = UInt8(cmd.suffix(2), radix: 16) else {
             return "?\r\r"
         }
 
         if code % 0x20 == 0 {
             if let mask = Self.supportMask(page: code, codes: supported) {
-                return reply(code: code, payload: mask)
+                return reply(mode: 0x41, header: [code], payload: mask)
             }
             return "NO DATA\r\r"
         }
 
-        guard supported.contains(code), let payload = await encode(code) else {
+        guard supported.contains(code) else {
             return "NO DATA\r\r"
         }
-        return reply(code: code, payload: payload)
+        if code == 0x01 {
+            let faults = await car.currentFaults()
+            let a = UInt8(min(faults.count, 0x7F)) | (faults.isEmpty ? 0 : 0x80)
+            return reply(mode: 0x41, header: [code], payload: [a, 0, 0, 0])
+        }
+        guard let payload = encode(code, from: await car.snapshot()) else {
+            return "NO DATA\r\r"
+        }
+        return reply(mode: 0x41, header: [code], payload: payload)
     }
 
-    private func reply(code: UInt8, payload: [UInt8]) -> String {
-        ([0x41, code] + payload).map { String(format: "%02X", $0) }.joined() + "\r\r"
+    private func reply(mode: UInt8, header: [UInt8], payload: [UInt8]) -> String {
+        ([mode] + header + payload).map { String(format: "%02X", $0) }.joined() + "\r\r"
     }
 
     /// The 4-byte support bitmask for one page (PID 00, 20, 40, …), or nil if
@@ -69,13 +96,8 @@ public actor ELM327Emulator: OBDTransport {
         return mask
     }
 
-    private func encode(_ code: UInt8) async -> [UInt8]? {
-        let s = await car.snapshot()
+    private func encode(_ code: UInt8, from s: ElectraCar.Snapshot) -> [UInt8]? {
         switch code {
-        case 0x01:
-            let faults = await car.currentFaults()
-            let a = UInt8(min(faults.count, 0x7F)) | (faults.isEmpty ? 0 : 0x80)
-            return [a, 0, 0, 0]
         case 0x04: return [u8(s.loadPct * 2.55)]
         case 0x05: return [u8(s.coolantC + 40)]
         case 0x06, 0x07: return [u8(100 * 1.28)]  // trim 0%

@@ -1,3 +1,4 @@
+import Celaeno
 import Maia
 import SwiftUI
 
@@ -27,6 +28,7 @@ public struct DiagnosticsView: View {
                     }
                 }
                 actions
+                historySection
             }
             .padding(22)
         }
@@ -105,6 +107,7 @@ public struct DiagnosticsView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Theme.text)
             causesSection(info)
+            freezeSection(dtc)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -128,6 +131,89 @@ public struct DiagnosticsView: View {
         } else if info.isGeneric {
             Text("No local knowledge-base entry — category decoded from the SAE code structure.")
                 .font(.system(size: 11))
+                .foregroundStyle(Theme.textDim)
+        }
+    }
+
+    @ViewBuilder
+    private func freezeSection(_ dtc: DTC) -> some View {
+        if model.freezeDTC?.code == dtc.code, !model.freezeFrame.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("AT TIME OF FAULT")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(Theme.copper)
+                HStack(spacing: 16) {
+                    ForEach(model.freezeFramePIDs, id: \.code) { pid in
+                        freezeStat(pid)
+                    }
+                    Spacer()
+                }
+            }
+            .padding(10)
+            .background(Theme.copper.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    @ViewBuilder
+    private func freezeStat(_ pid: PID) -> some View {
+        if let value = model.freezeFrame[pid.code] {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(String(format: "%.0f %@", value, pid.unit))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.text)
+                Text(pid.name.uppercased())
+                    .font(.system(size: 8, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundStyle(Theme.textDim)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var historySection: some View {
+        if !model.history.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("HISTORY")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(1.2)
+                        .foregroundStyle(Theme.textDim)
+                    Spacer()
+                    Text("survives code clearing")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.textDim)
+                }
+                ForEach(model.history.prefix(20)) { event in
+                    historyRow(event)
+                }
+            }
+            .padding(14)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private func historyRow(_ event: DTCEvent) -> some View {
+        let stored = event.kind == .stored
+        return HStack(spacing: 10) {
+            Image(systemName: stored ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(stored ? Theme.copper : Theme.textDim)
+            Text(event.code)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(Theme.text)
+            Text(event.title)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textDim)
+                .lineLimit(1)
+            Spacer()
+            Text(stored ? "stored" : "cleared")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(stored ? Theme.copper : Theme.textDim)
+            Text(event.date.formatted(date: .abbreviated, time: .shortened))
+                .font(.system(size: 10))
+                .monospacedDigit()
                 .foregroundStyle(Theme.textDim)
         }
     }

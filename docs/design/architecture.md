@@ -87,6 +87,31 @@ Two load-bearing rules:
 | **3 — Merope** | ESP32 + CAN transceiver tap; proprietary frame decoding (opendbc Subaru DBC as a head start) | Rear-gate latch state readable; first non-OBD signal on an Alcyone gauge |
 | **4 — Sterope grows up** | Custom thresholds/alerts; gate-open chime handling designed on top of real latch data | TBD after phase 3 findings. *Started early:* the rules engine (hysteresis triggers over the reading stream) + Alcyone alert banners already run on the bench; Electra injects faults to rehearse the check-engine flow. Chime work still gated on Merope. |
 
+## Snapshot & history architecture
+
+Three layers, each with its own memory and its own trigger:
+
+1. **The ECU's freeze frame (exists today, phases 0–2).** The car itself
+   captures a one-instant sensor snapshot when a code sets — we don't trigger
+   it, we *read* it (mode 02). Alcyone polls DTCs at 1 Hz; when a new code
+   appears it pulls the ECU's frame and archives it. This works even for
+   faults that happened while the app wasn't connected: the frame sits in the
+   ECU until read or cleared, and Celaeno's dedup records it exactly once on
+   next connect.
+2. **Celaeno on the iPad (exists today).** The archive of record — append-only
+   JSON in Application Support. Survives code clearing by design: the ECU
+   forgets, Celaeno doesn't.
+3. **Merope as black box (phase 3 decision).** Once an always-powered ESP32
+   sits on the bus, snapshot capture *should* move down to it: a rolling ring
+   buffer of recent telemetry in RAM, flushed to flash (LittleFS, modest write
+   budget) when a fault trips. That upgrades the snapshot from the ECU's
+   single instant to **N seconds before and after the event**, and it works
+   with the iPad at home on the charger. Trigger: watch MIL/DTC-count state
+   (poll PID 01, or the proprietary CAN frame carrying MIL once decoded) and
+   fire on change. Merope then syncs staged events up to Celaeno when Alcyone
+   next connects — Celaeno stays the archive of record; Merope is a staging
+   buffer, not a second source of truth.
+
 ## Hardware notes
 
 **Phase 1 dongle — the iOS constraint:** iPads/iPhones cannot talk to cheap

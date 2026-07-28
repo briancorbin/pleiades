@@ -178,13 +178,13 @@ final class DTCKnowledgeTests: XCTestCase {
     }
 
     func testUnknownGenericCodeFallsBackToSAEFamily() {
-        let info = DTC("P0333")!.info
+        let info = DTC("P0FFF")!.info
         XCTAssertTrue(info.isGeneric)
-        XCTAssertEqual(info.title, "Ignition system or misfire")
+        XCTAssertEqual(info.title, "Fuel and air metering")
     }
 
     func testManufacturerSpecificFallback() {
-        let info = DTC("P1443")!.info
+        let info = DTC("P1FFF")!.info
         XCTAssertTrue(info.isGeneric)
         XCTAssertTrue(info.title.contains("Manufacturer-specific"))
     }
@@ -194,5 +194,53 @@ final class DTCKnowledgeTests: XCTestCase {
         XCTAssertEqual(DTC("C0123")!.system, "Chassis")
         XCTAssertEqual(DTC("B0001")!.system, "Body")
         XCTAssertEqual(DTC("U0100")!.system, "Network")
+    }
+}
+
+final class FreezeFrameTests: XCTestCase {
+    func testReadFreezeFramePID() async throws {
+        let mock = MockAdapter(responses: ["020C00": "420C001AF8\r\r"])
+        let session = ELM327Session(transport: mock)
+        let reading = try await session.readFreezeFrame(.rpm)
+        XCTAssertEqual(reading.value, 1726.0)
+    }
+
+    func testFreezeFrameDTC() async throws {
+        let mock = MockAdapter(responses: ["020200": "4202000420\r\r"])
+        let session = ELM327Session(transport: mock)
+        let dtc = try await session.freezeFrameDTC()
+        XCTAssertEqual(dtc?.code, "P0420")
+    }
+
+    func testFreezeFrameDTCNilWhenNoFrame() async throws {
+        let mock = MockAdapter(responses: [:])  // NO DATA
+        let session = ELM327Session(transport: mock)
+        let dtc = try await session.freezeFrameDTC()
+        XCTAssertNil(dtc)
+    }
+}
+
+final class DatasetLookupTests: XCTestCase {
+    func testDatasetCoversNonCuratedCode() {
+        let info = DTC("P0333")!.info
+        XCTAssertFalse(info.isGeneric)
+        XCTAssertTrue(info.title.contains("Knock"))
+    }
+
+    func testSubaruSpecificWinsOverGeneric() {
+        let info = DTC("P1443")!.info
+        XCTAssertFalse(info.isGeneric)
+        XCTAssertTrue(info.title.contains("(Subaru)"))
+        XCTAssertTrue(info.title.contains("EVAP"))
+    }
+
+    func testStructuralFallbackForAbsentCode() {
+        let info = DTC("P0FFF")!.info
+        XCTAssertTrue(info.isGeneric)
+    }
+
+    func testCuratedStillWinsOverDataset() {
+        let info = DTC("P0420")!.info
+        XCTAssertFalse(info.likelyCauses.isEmpty)
     }
 }

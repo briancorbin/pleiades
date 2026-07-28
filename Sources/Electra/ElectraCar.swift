@@ -39,6 +39,7 @@ public actor ElectraCar {
     private var oilTempC: Double
     private var fuelPct: Double = 75
     private var faults: [DTC] = []
+    private var freeze: (dtc: DTC, snapshot: Snapshot)?
     private var runTimeS: Double = 0
     private var distanceSinceClearKm: Double = 128
     private var distanceWithMILKm: Double = 0
@@ -63,17 +64,26 @@ public actor ElectraCar {
         throttlePct = min(max(pct, 0), 100)
     }
 
-    /// Store a trouble code; the MIL lights while any are present.
+    /// Store a trouble code; the MIL lights while any are present. Like a
+    /// real ECU, the first fault captures a freeze frame of the moment.
     public func injectFault(_ dtc: DTC) {
         if !faults.contains(dtc) {
             faults.append(dtc)
+            if freeze == nil {
+                freeze = (dtc, snapshot())
+            }
         }
     }
 
     public func clearFaults() {
         faults = []
+        freeze = nil
         distanceWithMILKm = 0
         distanceSinceClearKm = 0
+    }
+
+    public func freezeFrame() -> (dtc: DTC, snapshot: Snapshot)? {
+        freeze
     }
 
     public func currentFaults() -> [DTC] {
