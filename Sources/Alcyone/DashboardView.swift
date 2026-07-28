@@ -19,6 +19,7 @@ public struct DashboardView: View {
 
     public var body: some View {
         VStack(spacing: 18) {
+            header
             HStack(spacing: 24) {
                 RadialGauge(
                     label: "RPM",
@@ -74,6 +75,30 @@ public struct DashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.background)
         .preferredColorScheme(.dark)
+    }
+
+    private var header: some View {
+        HStack {
+            Text("ALCYONE")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .tracking(4)
+                .foregroundStyle(Theme.text)
+            Text("✦")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.copper)
+            Spacer()
+            Text(model.sourceLabel.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.5)
+                .foregroundStyle(bench == nil ? Theme.text : Theme.copper)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .overlay(
+                    Capsule().strokeBorder(
+                        (bench == nil ? Theme.text : Theme.copper).opacity(0.4)
+                    )
+                )
+        }
     }
 
     private var benchBar: some View {

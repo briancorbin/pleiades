@@ -13,12 +13,15 @@ public final class TelemetryModel: ObservableObject {
         .ambientAirTemp, .fuelLevel, .manifoldPressure, .timingAdvance,
     ]
 
+    public let sourceLabel: String
+
     private let source: any TelemetrySource
     private var loop: Task<Void, Never>?
     private var isInitialized = false
 
     public init(source: any TelemetrySource) {
         self.source = source
+        self.sourceLabel = source.label
     }
 
     public func start() {

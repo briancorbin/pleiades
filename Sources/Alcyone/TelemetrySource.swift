@@ -5,6 +5,9 @@ import Maia
 /// plugged in — that's the platform's one design rule.
 public protocol TelemetrySource: Sendable {
     var session: ELM327Session { get }
+    /// Shown in the dashboard header so it's always obvious whether the
+    /// numbers are the real car or the bench.
+    var label: String { get }
     /// Called once per poll tick. Electra advances its fake clock here; a real
     /// adapter has nothing to do.
     func tick(dt: Double) async
@@ -14,6 +17,7 @@ public protocol TelemetrySource: Sendable {
 public final class ElectraSource: TelemetrySource, Sendable {
     public let car: ElectraCar
     public let session: ELM327Session
+    public let label = "Electra · simulated car"
 
     public init(car: ElectraCar = ElectraCar()) {
         self.car = car
