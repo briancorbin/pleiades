@@ -14,8 +14,11 @@ options:
 packages:
   pleiades:
     path: ..
+# The shell target/module must NOT be named "Alcyone" — that collides with the
+# SwiftPM library product of the same name (both would emit Alcyone.swiftmodule
+# → "multiple commands produce"). PRODUCT_NAME keeps the app itself Alcyone.
 targets:
-  Alcyone:
+  AlcyoneShell:
     type: application
     platform: iOS
     sources: [Sources]
@@ -24,6 +27,9 @@ targets:
         product: Alcyone
     settings:
       base:
+        PRODUCT_NAME: Alcyone
+        PRODUCT_MODULE_NAME: AlcyoneShell
+        PRODUCT_BUNDLE_IDENTIFIER: com.briancorbin.pleiades.alcyone
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
