@@ -1,14 +1,17 @@
+import Sterope
 import SwiftUI
 
-/// Alcyone's top level: Dashboard and Diagnostics tabs. The diagnostics tab
-/// badges when codes are stored.
+/// Alcyone's top level: Dashboard, Diagnostics, and Alerts tabs, with badges
+/// for stored codes and live alerts.
 public struct RootView: View {
     @ObservedObject var model: TelemetryModel
     let bench: ElectraSource?
+    let ruleStore: RuleStore
 
-    public init(model: TelemetryModel, bench: ElectraSource? = nil) {
+    public init(model: TelemetryModel, bench: ElectraSource? = nil, ruleStore: RuleStore) {
         self.model = model
         self.bench = bench
+        self.ruleStore = ruleStore
     }
 
     public var body: some View {
@@ -18,6 +21,9 @@ public struct RootView: View {
             DiagnosticsView(model: model, bench: bench)
                 .tabItem { Label("Diagnostics", systemImage: "stethoscope") }
                 .badge(model.dtcs.count)
+            AlertsView(model: model, store: ruleStore)
+                .tabItem { Label("Alerts", systemImage: "bolt.fill") }
+                .badge(model.alerts.count)
         }
         .background(Theme.background)
     }

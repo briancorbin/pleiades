@@ -60,3 +60,88 @@ final class SteropeEngineTests: XCTestCase {
         XCTAssertTrue(alerts.contains { $0.severity == .critical })
     }
 }
+
+final class StoredRuleTests: XCTestCase {
+    func testConversionRoundTrip() {
+        let stored = StoredRule(
+            pidCode: PID.coolantTemp.code, kind: .above, limit: 105,
+            clearMargin: 5, severity: .critical, message: "hot"
+        )
+        let rule = stored.alertRule()
+        XCTAssertNotNil(rule)
+        XCTAssertEqual(rule?.pid, .coolantTemp)
+        XCTAssertEqual(rule?.trigger, .above(105))
+        XCTAssertEqual(rule?.severity, .critical)
+
+        let back = StoredRule(from: rule!)
+        XCTAssertEqual(back.pidCode, stored.pidCode)
+        XCTAssertEqual(back.limit, 105)
+        XCTAssertEqual(back.kind, .above)
+    }
+
+    func testDisabledRuleProducesNoAlertRule() {
+        var stored = StoredRule(
+            pidCode: PID.rpm.code, kind: .above, limit: 6000,
+            clearMargin: 300, severity: .warning, message: "redline"
+        )
+        stored.enabled = false
+        XCTAssertNil(stored.alertRule())
+        XCTAssertEqual([stored].alertRules().count, 0)
+    }
+
+    func testUnknownPIDCodeProducesNoAlertRule() {
+        let stored = StoredRule(
+            pidCode: 0xEE, kind: .above, limit: 1,
+            clearMargin: 0, severity: .warning, message: "ghost"
+        )
+        XCTAssertNil(stored.alertRule())
+    }
+
+    func testDefaultsMirrorForesterDefaults() {
+        let defaults = StoredRule.defaults()
+        XCTAssertEqual(defaults.count, [AlertRule].foresterDefaults.count)
+        XCTAssertEqual(defaults.alertRules().count, defaults.count)
+    }
+}
+
+final class RuleStoreTests: XCTestCase {
+    private func scratchDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("sterope-tests-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    func testFirstLaunchSeedsDefaults() async {
+        let store = RuleStore(directory: scratchDirectory())
+        let rules = await store.all()
+        XCTAssertEqual(rules.count, StoredRule.defaults().count)
+    }
+
+    func testSavePersistsAcrossInstances() async {
+        let dir = scratchDirectory()
+        let store = RuleStore(directory: dir)
+        var rules = await store.all()
+        rules[0].enabled = false
+        rules.append(StoredRule(
+            pidCode: PID.oilTemp.code, kind: .above, limit: 130,
+            clearMargin: 5, severity: .critical, message: "custom"
+        ))
+        await store.save(rules)
+
+        let reloaded = RuleStore(directory: dir)
+        let loaded = await reloaded.all()
+        XCTAssertEqual(loaded.count, StoredRule.defaults().count + 1)
+        XCTAssertFalse(loaded[0].enabled)
+        XCTAssertEqual(loaded.last?.message, "custom")
+    }
+
+    func testResetRestoresDefaults() async {
+        let dir = scratchDirectory()
+        let store = RuleStore(directory: dir)
+        await store.save([])
+        let reset = await store.resetToDefaults()
+        XCTAssertEqual(reset.count, StoredRule.defaults().count)
+        let reloaded = RuleStore(directory: dir)
+        let loaded = await reloaded.all()
+        XCTAssertEqual(loaded.count, StoredRule.defaults().count)
+    }
+}

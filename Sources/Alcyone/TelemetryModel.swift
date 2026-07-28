@@ -48,9 +48,12 @@ public final class TelemetryModel: ObservableObject {
     private let windowPre: TimeInterval
     private let windowPost: TimeInterval
 
+    private let ruleStore: RuleStore?
+
     public init(
         source: any TelemetrySource,
         rules: [AlertRule] = .foresterDefaults,
+        ruleStore: RuleStore? = nil,
         historyDirectory: URL? = nil,
         windowPre: TimeInterval = 45,
         windowPost: TimeInterval = 15
@@ -58,9 +61,17 @@ public final class TelemetryModel: ObservableObject {
         self.source = source
         self.sourceLabel = source.label
         self.sterope = SteropeEngine(rules: rules)
+        self.ruleStore = ruleStore
         self.eventStore = DTCEventStore(directory: historyDirectory)
         self.windowPre = windowPre
         self.windowPost = windowPost
+    }
+
+    /// Swap the live rule set (e.g. after edits in the Alerts tab).
+    /// Hysteresis state resets — acceptable, the rules just changed.
+    public func setRules(_ rules: [AlertRule]) {
+        sterope = SteropeEngine(rules: rules)
+        alerts = sterope.evaluate(readings)
     }
 
     public func start() {
@@ -85,6 +96,9 @@ public final class TelemetryModel: ObservableObject {
         if !isInitialized {
             try? await source.session.initialize()
             history = await eventStore.all()
+            if let ruleStore {
+                sterope = SteropeEngine(rules: await ruleStore.all().alertRules())
+            }
             isInitialized = true
         }
         await source.tick(dt: 0.1)

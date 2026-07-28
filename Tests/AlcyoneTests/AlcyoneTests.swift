@@ -141,3 +141,37 @@ final class WindowCaptureTests: XCTestCase {
         XCTAssertTrue(window.allSatisfy { $0.t <= 0.5 })       // pre-trigger data
     }
 }
+
+@MainActor
+final class RuleSwappingTests: XCTestCase {
+    func testSetRulesAppliesImmediately() async {
+        let source = ElectraSource()
+        await source.setEngine(on: true)
+        let sensitive = AlertRule(
+            id: "test.rpm", pid: .rpm, trigger: .above(100), clearMargin: 10,
+            severity: .warning, message: "spinning"
+        )
+        let model = TelemetryModel(source: source, rules: [sensitive])
+        await model.poll(fast: true, slow: false)
+        XCTAssertEqual(model.alerts.count, 1)
+
+        model.setRules([])
+        XCTAssertEqual(model.alerts.count, 0)
+    }
+
+    func testRuleStoreDrivesEngineAtStartup() async {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("alcyone-rules-\(UUID().uuidString)", isDirectory: true)
+        let store = RuleStore(directory: dir)
+        await store.save([StoredRule(
+            id: "custom.rpm", pidCode: PID.rpm.code, kind: .above, limit: 100,
+            clearMargin: 10, severity: .warning, message: "custom store rule"
+        )])
+
+        let source = ElectraSource()
+        await source.setEngine(on: true)
+        let model = TelemetryModel(source: source, rules: [], ruleStore: store)
+        await model.poll(fast: true, slow: false)
+        XCTAssertEqual(model.alerts.map(\.id), ["custom.rpm"])
+    }
+}

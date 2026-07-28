@@ -3,7 +3,7 @@ import Maia
 /// Sterope — "lightning." Watches the reading stream and decides when to warn.
 /// Pure logic, no UI: Alcyone renders whatever this returns.
 
-public enum Severity: Sendable, Equatable {
+public enum Severity: String, Sendable, Equatable, Codable {
     case warning
     case critical
 }

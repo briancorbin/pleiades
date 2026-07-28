@@ -1,6 +1,7 @@
 #if os(macOS)
 import Alcyone
 import AppKit
+import Sterope
 import SwiftUI
 
 /// macOS bench runner: the Alcyone dashboard against the Electra fake car.
@@ -8,17 +9,20 @@ import SwiftUI
 @main
 struct AlcyoneApp: App {
     private let source: ElectraSource
+    private let ruleStore: RuleStore
     @StateObject private var model: TelemetryModel
 
     init() {
         let source = ElectraSource()
+        let ruleStore = RuleStore()
         self.source = source
-        _model = StateObject(wrappedValue: TelemetryModel(source: source))
+        self.ruleStore = ruleStore
+        _model = StateObject(wrappedValue: TelemetryModel(source: source, ruleStore: ruleStore))
     }
 
     var body: some Scene {
         WindowGroup("Alcyone ✦ Electra bench") {
-            RootView(model: model, bench: source)
+            RootView(model: model, bench: source, ruleStore: ruleStore)
                 .frame(minWidth: 860, minHeight: 720)
                 .onAppear {
                     NSApplication.shared.setActivationPolicy(.regular)
