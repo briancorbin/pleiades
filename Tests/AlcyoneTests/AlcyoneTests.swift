@@ -294,3 +294,44 @@ final class AlertSoundTests: XCTestCase {
         XCTAssertEqual(player.played.count, 0)
     }
 }
+
+#if canImport(AVFoundation)
+import AVFoundation
+
+/// Regression cover for the crash: playData used to inspect `players` inside
+/// its own mutating removeAll, which traps on exclusive access.
+final class SystemAlertSoundPlayerTests: XCTestCase {
+    func testBuiltInTonesAreValidAudio() throws {
+        for name in AlertSound.builtInNames {
+            let data = SystemAlertSoundPlayer.tone(named: name)
+            XCTAssertGreaterThan(data.count, 44)  // header + samples
+            XCTAssertEqual(String(decoding: data.prefix(4), as: UTF8.self), "RIFF")
+            XCTAssertNoThrow(try AVAudioPlayer(data: data))
+        }
+    }
+
+    func testStillPlayingReapsFinishedPlayers() throws {
+        let data = SystemAlertSoundPlayer.tone(named: "soft")
+        let idle = try AVAudioPlayer(data: data)  // never started
+        XCTAssertEqual(SystemAlertSoundPlayer.stillPlaying([idle]).count, 0)
+        XCTAssertEqual(SystemAlertSoundPlayer.stillPlaying([]).count, 0)
+    }
+
+    func testRapidRepeatedPlaybackDoesNotTrap() {
+        let player = SystemAlertSoundPlayer()
+        for _ in 0..<25 {
+            player.play(.builtIn("chime"), volume: 0.01)
+        }
+        // Let the serial sound queue drain; a trap would abort the process.
+        let drained = expectation(description: "sound queue drained")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { drained.fulfill() }
+        wait(for: [drained], timeout: 3)
+    }
+
+    func testZeroVolumeIsANoOp() {
+        let player = SystemAlertSoundPlayer()
+        player.play(.builtIn("urgent"), volume: 0)
+        player.play(.silent, volume: 1)
+    }
+}
+#endif

@@ -28,6 +28,7 @@ public final class SystemAlertSoundPlayer: AlertSoundPlaying, @unchecked Sendabl
     private let queue = DispatchQueue(label: "alcyone.sound")
     private var players: [AVAudioPlayer] = []
     private let soundsBase: URL?
+    private var sessionConfigured = false
 
     public init(soundsBase: URL? = nil) {
         self.soundsBase = soundsBase
@@ -38,6 +39,7 @@ public final class SystemAlertSoundPlayer: AlertSoundPlaying, @unchecked Sendabl
         guard clamped > 0 else { return }
         queue.async { [weak self] in
             guard let self else { return }
+            self.configureSessionIfNeeded()
             switch sound {
             case .silent:
                 return
@@ -56,9 +58,30 @@ public final class SystemAlertSoundPlayer: AlertSoundPlaying, @unchecked Sendabl
         guard let player = try? AVAudioPlayer(data: data) else { return }
         player.volume = Float(volume)
         player.prepareToPlay()
-        player.play()
+        // Reap finished players *before* appending. Never inspect `players`
+        // from inside a closure that's mutating it — that's an exclusive
+        // access violation, and it traps.
+        players = Self.stillPlaying(players)
         players.append(player)
-        players.removeAll { !$0.isPlaying && $0.currentTime == 0 && players.count > 8 }
+        player.play()
+    }
+
+    /// Which retained players are still making sound. Pure and static so the
+    /// bookkeeping is testable and can't touch `self` mid-mutation.
+    static func stillPlaying(_ players: [AVAudioPlayer]) -> [AVAudioPlayer] {
+        players.filter(\.isPlaying)
+    }
+
+    /// On iOS the alert has to be audible over whatever's playing and
+    /// regardless of the ring switch — duck the music, don't stop it.
+    private func configureSessionIfNeeded() {
+        #if os(iOS)
+        guard !sessionConfigured else { return }
+        sessionConfigured = true
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, options: [.duckOthers, .mixWithOthers])
+        try? session.setActive(true)
+        #endif
     }
 
     /// Built-in tones as synthesized WAV data — a short envelope over one or
