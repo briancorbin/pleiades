@@ -11,7 +11,7 @@ Check things off as they land.*
 
 ## Phase 1 — Alcyone meets the real car (~$35)
 
-- [ ] **Vgate iCar Pro BLE 4.0** (~$35) — the iOS-compatible dongle. This is the
+- [x] **Vgate iCar Pro BLE 4.0** (~$35) — the iOS-compatible dongle. This is the
   gate for the real FB25 PID map, the CoreBluetooth transport, and live gauges
   in the driveway. Nothing else substitutes (iPads can't do BT-Classic).
 
@@ -22,13 +22,13 @@ Check things off as they land.*
 
 ## Merope goes in the car (~$35)
 
-- [ ] **OBD-II Y-splitter** (male → 2× female, ~$10) — Merope on one leg, port
+- [x] **OBD-II Y-splitter** (male → 2× female, ~$10) — Merope on one leg, port
   stays free for the dongle / state inspection
-- [ ] **12 V→5 V buck converter** (~$10) — get a decent automotive-tolerant one
+- [x] **12 V→5 V buck converter** (~$10) — get a decent automotive-tolerant one
   (input rated ≥ 24 V for load-dump headroom), not a bare LM2596 board
-- [ ] **Inline fuse** (~$8) — blade-fuse holder + 1–2 A fuse on the 12 V feed;
+- [x] **Inline fuse** (~$8) — blade-fuse holder + 1–2 A fuse on the 12 V feed;
   pin 16 is always-hot battery
-- [ ] **Small project box** (~$8) + 3M Dual Lock / velcro + zip ties — behind
+- [x] **Small project box** (~$8) + 3M Dual Lock / velcro + zip ties — behind
   the dash trim, invisible from the cabin (Merope is the star that hides)
 - [x] Hookup wire + heat shrink — existing stash
 
