@@ -62,7 +62,8 @@ supplies the offset; Celaeno stores corrected dates).
 ## Build order
 
 1. **Host-testable core (no hardware):** ring buffer + trigger/window logic
-   as plain C with unit tests under PlatformIO `native`.
+   as plain C with unit tests under PlatformIO `native`. ✅ *Done 2026-07-27 —
+   `firmware/merope/lib/merope_core`, 11 tests via `pio test -e native`.*
 2. **Desk bench:** second ESP32 flashed as *Electra-on-a-wire* — replays
    plausible Forester CAN traffic so the black box develops entirely on the
    desk, mirroring how Alcyone developed against Electra.

@@ -13,7 +13,7 @@ six stars. So the platform is the cluster and the components are the sisters:
 | **Electra** | Bench simulator — a fake car behind a fake ELM327 | phase 0 ✅ |
 | **Alcyone** | The iPad app (SwiftUI gauges) | phase 2 🚧 — dashboard runs on macOS against Electra |
 | **Celaeno** | Fault-event archive — history that survives code clearing | born early 🌑 |
-| **Merope** | Hardwired CAN tap (ESP32) for Subaru's proprietary frames | phase 3 |
+| **Merope** | Hardwired CAN tap (ESP32) for Subaru's proprietary frames | brain before body 🧠 — black-box core (ring buffer + fault watcher) host-tested in [firmware/merope](firmware/merope) |
 | **Sterope** | Alert/threshold engine | born early ⚡ — hysteresis rules + alert banners live on the bench |
 
 Full design: [docs/design/architecture.md](docs/design/architecture.md)

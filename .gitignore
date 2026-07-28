@@ -1,5 +1,6 @@
 .build/
 .swiftpm/
+.pio/
 .DS_Store
 xcuserdata/
 *.xcodeproj

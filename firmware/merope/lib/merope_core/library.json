@@ -1,0 +1,8 @@
+{
+  "name": "merope_core",
+  "version": "0.1.0",
+  "description": "Portable black-box core: telemetry ring buffer + fault watcher",
+  "build": {
+    "includeDir": "include"
+  }
+}
