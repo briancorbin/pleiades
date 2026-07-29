@@ -48,3 +48,26 @@ Transports are swappable and protocol frontends converge: BLE dongle, WiFi
 dongle, ESP32 tap, and the Electra emulator all feed the same
 `ELM327Session → OBDReading` pipeline, so nothing upstream ever knows where a
 number came from.
+
+## Why Electra exists
+
+Most OBD-II libraries assume you're sitting in the driver's seat with a
+dongle plugged in. This one ships a fake car: `ElectraCar` models plausible
+vehicle behavior, `ELM327Emulator` wraps it in the real adapter dialect, and
+Maia's actual `ELM327Session` drives it **unmodified**. Gauges, alert rules,
+diagnostics, and fault-window capture were all built and tested against it
+before the project ever touched a vehicle.
+
+```sh
+./scripts/bench.sh   # Swift + C suites, zero hardware
+```
+
+## Credits
+
+Trouble-code descriptions in `Sources/Maia/Resources/dtc-codes.json` are
+derived from [Wal33D/dtc-database](https://github.com/Wal33D/dtc-database)
+(MIT) — see that file's `ATTRIBUTION.md`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
