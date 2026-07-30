@@ -57,6 +57,24 @@ public struct Alert: Sendable, Identifiable, Equatable {
     public let unit: String
     public let sound: AlertSound
     public let volume: Double
+
+    public init(
+        id: String,
+        severity: Severity,
+        message: String,
+        value: Double,
+        unit: String,
+        sound: AlertSound = .silent,
+        volume: Double = 1.0
+    ) {
+        self.id = id
+        self.severity = severity
+        self.message = message
+        self.value = value
+        self.unit = unit
+        self.sound = sound
+        self.volume = volume
+    }
 }
 
 /// Evaluates rules against each poll's readings, tracking which alerts are

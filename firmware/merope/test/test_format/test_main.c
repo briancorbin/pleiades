@@ -119,8 +119,69 @@ static void test_status_frame_feeds_the_watcher(void) {
     TEST_ASSERT_FALSE(mrp_frame_status_decode(&telem, &mil, &count));
 }
 
+static void test_body_frame_round_trip(void) {
+    mrp_body_state_t st = {
+        .gate_open = true, .door_fl = false, .door_fr = true,
+        .door_rl = false, .door_rr = false,
+        .belt_driver = true, .belt_passenger = false,
+        .gear = 3, .ignition = 2,
+    };
+    mrp_can_frame_t f = mrp_frame_body(st);
+    TEST_ASSERT_EQUAL_UINT16(MRP_ID_BODY, f.id);
+
+    mrp_sample_t out[16];
+    size_t n = mrp_frame_decode(&f, 100, out, 16);
+    TEST_ASSERT_EQUAL_size_t(9, n);
+
+    float gate = -1, door_fr = -1, belt_d = -1, gear = -1;
+    for (size_t i = 0; i < n; i++) {
+        if (out[i].signal == MRP_SIG_GATE) gate = out[i].value;
+        if (out[i].signal == MRP_SIG_DOOR_FR) door_fr = out[i].value;
+        if (out[i].signal == MRP_SIG_BELT_DRIVER) belt_d = out[i].value;
+        if (out[i].signal == MRP_SIG_GEAR) gear = out[i].value;
+    }
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, gate);
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, door_fr);
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, belt_d);
+    TEST_ASSERT_EQUAL_FLOAT(3.0f, gear);
+}
+
+static void test_gate_closed_decodes_zero(void) {
+    mrp_body_state_t st = {0};
+    mrp_can_frame_t f = mrp_frame_body(st);
+    mrp_sample_t out[16];
+    mrp_frame_decode(&f, 0, out, 16);
+    for (size_t i = 0; i < 16; i++) {
+        if (out[i].signal == MRP_SIG_GATE) {
+            TEST_ASSERT_EQUAL_FLOAT(0.0f, out[i].value);
+            return;
+        }
+    }
+    TEST_FAIL_MESSAGE("gate signal not emitted");
+}
+
+static void test_tpms_round_trip(void) {
+    mrp_can_frame_t f = mrp_frame_tpms(220.0f, 218.0f, 150.0f, 221.0f);
+    mrp_sample_t out[8];
+    size_t n = mrp_frame_decode(&f, 0, out, 8);
+    TEST_ASSERT_EQUAL_size_t(4, n);
+    TEST_ASSERT_EQUAL_UINT16(MRP_SIG_TPMS_FL, out[0].signal);
+    TEST_ASSERT_FLOAT_WITHIN(2.0f, 220.0f, out[0].value);
+    TEST_ASSERT_FLOAT_WITHIN(2.0f, 150.0f, out[2].value);  // the low one
+}
+
+static void test_proprietary_signals_sit_above_pid_range(void) {
+    // Standard PID codes are 0x00-0xFF; proprietary signals must not collide.
+    TEST_ASSERT_TRUE(MRP_SIG_GATE > 0xFF);
+    TEST_ASSERT_TRUE(MRP_SIG_TPMS_RR > 0xFF);
+}
+
 int main(void) {
     UNITY_BEGIN();
+    RUN_TEST(test_body_frame_round_trip);
+    RUN_TEST(test_gate_closed_decodes_zero);
+    RUN_TEST(test_tpms_round_trip);
+    RUN_TEST(test_proprietary_signals_sit_above_pid_range);
     RUN_TEST(test_event_round_trip);
     RUN_TEST(test_event_encode_fails_when_buffer_small);
     RUN_TEST(test_event_decode_rejects_bad_magic_and_truncation);

@@ -42,6 +42,29 @@ static void led_set(bool healthy) {
 static bool mil_on = false;
 static uint8_t dtc_count = 0;
 
+// Scenarios — canned situations the bench can act out on demand. The BOOT
+// button cycles them. This is why the simulator keeps earning its keep after
+// the car exists: the car can't produce a fault at 11pm on request.
+typedef enum {
+    SCENARIO_NORMAL,     // everything buttoned up, nothing wrong
+    SCENARIO_LUMBER,     // the origin story: gate open, driving anyway
+    SCENARIO_FAULT,      // MIL sets mid-drive
+    SCENARIO_SLOW_LEAK,  // one tire bleeding down over minutes
+    SCENARIO_COUNT,
+} scenario_t;
+
+static scenario_t scenario = SCENARIO_NORMAL;
+static uint32_t scenario_started_ms = 0;
+
+static const char *scenario_name(scenario_t s) {
+    switch (s) {
+    case SCENARIO_LUMBER: return "LUMBER RUN (gate open)";
+    case SCENARIO_FAULT: return "FAULT (MIL sets)";
+    case SCENARIO_SLOW_LEAK: return "SLOW LEAK (RL tire)";
+    default: return "NORMAL";
+    }
+}
+
 /// A simple repeating drive cycle so there's motion in the ring: idle,
 /// pull, cruise, back to idle, every 40 seconds.
 static void drive_cycle(uint32_t ms, float *rpm, float *speed, float *coolant,
@@ -115,22 +138,50 @@ static void report_bus(void) {
     }
 }
 
-/// Debounced BOOT button: toggles the fault state.
-static void poll_button(void) {
+/// Debounced BOOT button: cycles scenarios.
+static void poll_button(uint32_t now_ms) {
     static bool was_down = false;
     bool down = gpio_get_level(BOOT_BUTTON) == 0;
     if (down && !was_down) {
-        if (mil_on) {
-            mil_on = false;
-            dtc_count = 0;
-            ESP_LOGI(TAG, "fault CLEARED (MIL off)");
-        } else {
-            mil_on = true;
-            dtc_count++;
-            ESP_LOGI(TAG, "fault INJECTED (MIL on, %d code(s))", dtc_count);
-        }
+        scenario = (scenario_t)((scenario + 1) % SCENARIO_COUNT);
+        scenario_started_ms = now_ms;
+        mil_on = false;
+        dtc_count = 0;
+        ESP_LOGI(TAG, "▶ scenario: %s", scenario_name(scenario));
     }
     was_down = down;
+}
+
+/// Body state for the current scenario.
+static mrp_body_state_t body_for_scenario(uint32_t elapsed_ms) {
+    mrp_body_state_t st = {
+        .gate_open = false,
+        .belt_driver = true,
+        .belt_passenger = false,
+        .gear = 3,      // D
+        .ignition = 2,  // run
+    };
+    if (scenario == SCENARIO_LUMBER) {
+        // Gate goes up ~4 s in and stays up — strapped down, hauling.
+        st.gate_open = elapsed_ms > 4000;
+    }
+    return st;
+}
+
+/// Tire pressures for the current scenario, kPa (~220 = 32 psi).
+static void tpms_for_scenario(uint32_t elapsed_ms, float *fl, float *fr,
+                              float *rl, float *rr) {
+    *fl = 221.0f;
+    *fr = 219.0f;
+    *rl = 220.0f;
+    *rr = 218.0f;
+    if (scenario == SCENARIO_SLOW_LEAK) {
+        // Rear-left bleeds ~1 kPa/s so a leak is watchable in a demo, not a
+        // real-world rate.
+        float dropped = (float)elapsed_ms / 1000.0f;
+        *rl = 220.0f - dropped;
+        if (*rl < 70.0f) *rl = 70.0f;
+    }
 }
 
 void app_main(void) {
@@ -150,24 +201,38 @@ void app_main(void) {
     ESP_ERROR_CHECK(twai_driver_install(&general, &timing, &filter));
     ESP_ERROR_CHECK(twai_start());
 
-    ESP_LOGI(TAG, "Electra-on-a-wire up at 500 kbit/s. BOOT button = inject/clear fault.");
+    ESP_LOGI(TAG, "Electra-on-a-wire up at 500 kbit/s. BOOT cycles scenarios:");
+    ESP_LOGI(TAG, "  NORMAL → LUMBER RUN → FAULT → SLOW LEAK");
 
     uint32_t tick = 0;
     while (1) {
-        poll_button();
-
         uint32_t ms = (uint32_t)(esp_timer_get_time() / 1000);
+        poll_button(ms);
+        uint32_t elapsed = ms - scenario_started_ms;
+
+        // The fault scenario sets the MIL ~5 s in, once there's context in
+        // Merope's ring to capture.
+        if (scenario == SCENARIO_FAULT && !mil_on && elapsed > 5000) {
+            mil_on = true;
+            dtc_count = 1;
+            ESP_LOGW(TAG, "MIL set (scenario)");
+        }
+
         float rpm, speed, coolant, throttle, load;
         drive_cycle(ms, &rpm, &speed, &coolant, &throttle, &load);
 
         send(mrp_frame_telem_a(rpm, speed, coolant, throttle, load));
         send(mrp_frame_telem_b(13.9f, 31.0f, 74.0f, 25.0f + throttle * 0.76f));
+        send(mrp_frame_body(body_for_scenario(elapsed)));
         if (tick % STATUS_EVERY == 0) {
             send(mrp_frame_status(mil_on, dtc_count));
+            float fl, fr, rl, rr;
+            tpms_for_scenario(elapsed, &fl, &fr, &rl, &rr);
+            send(mrp_frame_tpms(fl, fr, rl, rr));
         }
         if (tick % 20 == 0) {
-            ESP_LOGI(TAG, "rpm %.0f  speed %.0f  coolant %.0f  mil %d",
-                     rpm, speed, coolant, mil_on);
+            ESP_LOGI(TAG, "[%s] rpm %.0f  speed %.0f  coolant %.0f  mil %d",
+                     scenario_name(scenario), rpm, speed, coolant, mil_on);
             report_bus();
         }
 

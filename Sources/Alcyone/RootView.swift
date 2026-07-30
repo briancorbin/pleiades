@@ -31,8 +31,11 @@ public struct RootView: View {
             AlertsView(model: model, store: ruleStore)
                 .tabItem { Label("Alerts", systemImage: "bolt.fill") }
                 .badge(model.alerts.count)
+            VehicleView(model: model)
+                .tabItem { Label("Vehicle", systemImage: "car.side.fill") }
+                .badge(model.gateOpen ? "!" : nil)
             DrivesView(model: model)
-                .tabItem { Label("Drives", systemImage: "car.fill") }
+                .tabItem { Label("Drives", systemImage: "road.lanes") }
         }
         .background(Theme.background)
     }

@@ -21,7 +21,7 @@ static const ble_uuid16_t SVC_UUID = BLE_UUID16_INIT(0xFFF0);
 static const ble_uuid16_t CHR_NOTIFY_UUID = BLE_UUID16_INIT(0xFFF1);
 static const ble_uuid16_t CHR_WRITE_UUID = BLE_UUID16_INIT(0xFFF2);
 
-#define MAX_SIGNAL 0x60
+#define MAX_SIGNAL 0x140
 static float s_values[MAX_SIGNAL];
 static bool s_have[MAX_SIGNAL];
 static bool s_mil;
@@ -77,7 +77,7 @@ static void respond(const char *text) {
 /// value for it, which becomes NO DATA — exactly like a car that doesn't
 /// support a PID.
 static bool encode_pid(uint8_t pid, char *out, size_t out_len) {
-    if (pid >= MAX_SIGNAL || !s_have[pid]) return false;
+    if (!s_have[pid]) return false;  // uint8_t pid is always in range
     float v = s_values[pid];
 
     switch (pid) {
@@ -116,7 +116,7 @@ static bool encode_pid(uint8_t pid, char *out, size_t out_len) {
 static void encode_supported(char *out, size_t out_len) {
     uint8_t mask[4] = {0, 0, 0, 0};
     for (uint8_t pid = 1; pid <= 0x20; pid++) {
-        bool supported = (pid == 0x01) || (pid < MAX_SIGNAL && s_have[pid]);
+        bool supported = (pid == 0x01) || s_have[pid];
         if (supported) {
             uint8_t index = pid - 1;
             mask[index / 8] |= 0x80 >> (index % 8);
@@ -159,6 +159,26 @@ static void handle_command(const char *raw, size_t len) {
     }
     if (strcmp(cmd, "04") == 0) {
         respond("44\r\r>");  // Merope is read-only; acknowledge, change nothing
+        return;
+    }
+
+    // Mode 22 (ReadDataByIdentifier) — how real manufacturers expose
+    // proprietary data, and how Merope serves the signals no OBD request can
+    // reach: gate latch, seatbelts, per-wheel TPMS. DID == signal id, value
+    // is uint16 at one decimal place.
+    if (n == 6 && cmd[0] == '2' && cmd[1] == '2') {
+        unsigned did = 0;
+        if (sscanf(cmd + 2, "%4x", &did) != 1) {
+            respond("?\r\r>");
+            return;
+        }
+        if (did < MAX_SIGNAL && s_have[did]) {
+            uint16_t scaled = (uint16_t)(s_values[did] * 10.0f);
+            snprintf(out, sizeof(out), "62%04X%02X%02X\r\r>", did, scaled >> 8, scaled & 0xFF);
+            respond(out);
+        } else {
+            respond("NO DATA\r\r>");
+        }
         return;
     }
 

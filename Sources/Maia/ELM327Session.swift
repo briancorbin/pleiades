@@ -78,6 +78,19 @@ public actor ELM327Session {
             .filter { $0.bytes != (0, 0) }
     }
 
+    /// Read a proprietary signal via mode 22 (ReadDataByIdentifier). Only a
+    /// CAN tap can answer these — a dongle has nothing to ask.
+    public func readProprietary(_ signal: ProprietarySignal) async throws -> Double {
+        let raw = try await transport.send(signal.command)
+        let payload = try Self.payload(from: raw, mode: 0x22, code: nil)
+        // Reply echoes the 2-byte identifier, then a uint16 at one decimal.
+        guard payload.count >= 4 else { throw OBDError.malformedResponse(raw) }
+        let echoed = UInt16(payload[0]) << 8 | UInt16(payload[1])
+        guard echoed == signal.id else { throw OBDError.malformedResponse(raw) }
+        let scaled = UInt16(payload[2]) << 8 | UInt16(payload[3])
+        return Double(scaled) / 10.0
+    }
+
     /// Read one PID from a freeze frame (mode 02) — the sensor snapshot the
     /// ECU captured at the instant the code set.
     public func readFreezeFrame(_ pid: PID, frame: UInt8 = 0) async throws -> OBDReading {

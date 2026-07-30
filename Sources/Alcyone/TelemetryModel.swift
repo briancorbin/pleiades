@@ -12,6 +12,10 @@ public final class TelemetryModel: ObservableObject {
     @Published public private(set) var alerts: [Alert] = []
     @Published public private(set) var mil: MILStatus?
     @Published public private(set) var dtcs: [DTC] = []
+    /// Proprietary signals — only present when the source is a CAN tap.
+    /// A dongle simply never answers mode 22, so these stay empty.
+    @Published public private(set) var proprietary: [UInt16: Double] = [:]
+    @Published public private(set) var hasProprietary = false
     @Published public private(set) var freezeFrame: [UInt8: Double] = [:]
     @Published public private(set) var freezeDTC: DTC?
     /// Celaeno's archive, newest first. Survives code clearing.
@@ -174,6 +178,7 @@ public final class TelemetryModel: ObservableObject {
             ring.removeFirst()
         }
         if slow {
+            await pollProprietary()
             mil = try? await source.session.milStatus()
             let current = (try? await source.session.readDTCs()) ?? []
             await refreshFreezeFrame(hasCodes: !current.isEmpty)
@@ -181,8 +186,39 @@ public final class TelemetryModel: ObservableObject {
             dtcs = current
         }
         await flushDueWindows()
-        alerts = sterope.evaluate(readings)
-        playSounds(for: sterope.started)
+        var evaluated = sterope.evaluate(readings)
+        var started = sterope.started
+        // The gate alert isn't a threshold on a number — it's a latch state,
+        // and it's suppressed when hauling is deliberate.
+        if let gateAlert = gateAlert() {
+            evaluated.append(gateAlert)
+            if !wasGateAlerting {
+                started.append(gateAlert)
+            }
+            wasGateAlerting = true
+        } else {
+            wasGateAlerting = false
+        }
+        alerts = evaluated
+        playSounds(for: started)
+    }
+
+    private var wasGateAlerting = false
+
+    /// Hauling mode is the user saying "yes, I know, it's deliberate" — the
+    /// whole point of the project. Off, an open gate is worth a banner.
+    private func gateAlert() -> Alert? {
+        guard hasProprietary, gateOpen else { return nil }
+        guard !UserDefaults.standard.bool(forKey: "alcyone.haulingMode") else { return nil }
+        return Alert(
+            id: "gate.open",
+            severity: .warning,
+            message: "Rear gate open",
+            value: 1,
+            unit: "",
+            sound: .builtIn("chime"),
+            volume: 1.0
+        )
     }
 
     /// Sound plays on the rising edge only — once per event, not once per
@@ -207,6 +243,31 @@ public final class TelemetryModel: ObservableObject {
         dtcs = (try? await source.session.readDTCs()) ?? []
         freezeFrame = [:]
         freezeDTC = nil
+    }
+
+    /// Proprietary signals ride the slow cadence — latches and tire
+    /// pressures don't change at gauge rates.
+    private func pollProprietary() async {
+        var found: [UInt16: Double] = [:]
+        for signal in ProprietarySignal.all {
+            if let value = try? await source.session.readProprietary(signal) {
+                found[signal.id] = value
+            }
+        }
+        if !found.isEmpty {
+            proprietary = found
+            hasProprietary = true
+        }
+    }
+
+    public func proprietaryValue(_ signal: ProprietarySignal) -> Double? {
+        proprietary[signal.id]
+    }
+
+    /// True when the rear gate is open — the signal this whole project
+    /// started over.
+    public var gateOpen: Bool {
+        (proprietary[ProprietarySignal.gate.id] ?? 0) > 0.5
     }
 
     private func refreshFreezeFrame(hasCodes: Bool) async {

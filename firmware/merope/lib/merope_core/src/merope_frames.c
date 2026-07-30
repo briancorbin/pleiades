@@ -48,6 +48,29 @@ mrp_can_frame_t mrp_frame_telem_b(float voltage, float intake_c, float fuel_pct,
     return f;
 }
 
+mrp_can_frame_t mrp_frame_body(mrp_body_state_t st) {
+    mrp_can_frame_t f = {.id = MRP_ID_BODY, .len = 3, .data = {0}};
+    // Byte 0: latch bits. Byte 1: belts. Byte 2: gear (low nibble) +
+    // ignition (high nibble) — a plausible packing, not the Forester's real
+    // one. Recon replaces this decode, not the pipeline above it.
+    f.data[0] = (uint8_t)((st.gate_open ? 0x01 : 0) | (st.door_fl ? 0x02 : 0) |
+                          (st.door_fr ? 0x04 : 0) | (st.door_rl ? 0x08 : 0) |
+                          (st.door_rr ? 0x10 : 0));
+    f.data[1] = (uint8_t)((st.belt_driver ? 0x01 : 0) | (st.belt_passenger ? 0x02 : 0));
+    f.data[2] = (uint8_t)((st.gear & 0x0F) | ((st.ignition & 0x0F) << 4));
+    return f;
+}
+
+mrp_can_frame_t mrp_frame_tpms(float fl, float fr, float rl, float rr) {
+    mrp_can_frame_t f = {.id = MRP_ID_TPMS, .len = 4, .data = {0}};
+    // kPa in half-unit steps: 0–510 kPa covers anything a tire should see.
+    f.data[0] = clamp_u8(fl * 0.5f, 0, 255);
+    f.data[1] = clamp_u8(fr * 0.5f, 0, 255);
+    f.data[2] = clamp_u8(rl * 0.5f, 0, 255);
+    f.data[3] = clamp_u8(rr * 0.5f, 0, 255);
+    return f;
+}
+
 mrp_can_frame_t mrp_frame_status(bool mil_on, uint8_t dtc_count) {
     mrp_can_frame_t f = {.id = MRP_ID_STATUS, .len = 2, .data = {0}};
     f.data[0] = mil_on ? 1 : 0;
@@ -86,6 +109,29 @@ size_t mrp_frame_decode(const mrp_can_frame_t *frame, uint32_t now_ms,
         n = emit(out, n, out_max, now_ms, SIG_INTAKE, (float)frame->data[2] - 40.0f);
         n = emit(out, n, out_max, now_ms, SIG_FUEL, (float)frame->data[3]);
         n = emit(out, n, out_max, now_ms, SIG_MAP, (float)frame->data[4]);
+        break;
+    }
+    case MRP_ID_BODY: {
+        if (frame->len < 3) return 0;
+        uint8_t latches = frame->data[0];
+        uint8_t belts = frame->data[1];
+        n = emit(out, n, out_max, now_ms, MRP_SIG_GATE, (latches & 0x01) ? 1.0f : 0.0f);
+        n = emit(out, n, out_max, now_ms, MRP_SIG_DOOR_FL, (latches & 0x02) ? 1.0f : 0.0f);
+        n = emit(out, n, out_max, now_ms, MRP_SIG_DOOR_FR, (latches & 0x04) ? 1.0f : 0.0f);
+        n = emit(out, n, out_max, now_ms, MRP_SIG_DOOR_RL, (latches & 0x08) ? 1.0f : 0.0f);
+        n = emit(out, n, out_max, now_ms, MRP_SIG_DOOR_RR, (latches & 0x10) ? 1.0f : 0.0f);
+        n = emit(out, n, out_max, now_ms, MRP_SIG_BELT_DRIVER, (belts & 0x01) ? 1.0f : 0.0f);
+        n = emit(out, n, out_max, now_ms, MRP_SIG_BELT_PASSENGER, (belts & 0x02) ? 1.0f : 0.0f);
+        n = emit(out, n, out_max, now_ms, MRP_SIG_GEAR, (float)(frame->data[2] & 0x0F));
+        n = emit(out, n, out_max, now_ms, MRP_SIG_IGNITION, (float)(frame->data[2] >> 4));
+        break;
+    }
+    case MRP_ID_TPMS: {
+        if (frame->len < 4) return 0;
+        n = emit(out, n, out_max, now_ms, MRP_SIG_TPMS_FL, (float)frame->data[0] * 2.0f);
+        n = emit(out, n, out_max, now_ms, MRP_SIG_TPMS_FR, (float)frame->data[1] * 2.0f);
+        n = emit(out, n, out_max, now_ms, MRP_SIG_TPMS_RL, (float)frame->data[2] * 2.0f);
+        n = emit(out, n, out_max, now_ms, MRP_SIG_TPMS_RR, (float)frame->data[3] * 2.0f);
         break;
     }
     default:
