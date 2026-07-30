@@ -170,6 +170,51 @@ Two flavors:
   data (odometer). Practice on a junkyard cluster first — a $60 mistake
   instead of a consequential one.
 
+### 3b. Transparent gateway — intercept the *inputs*, not just the output
+
+Rather than only tapping the speaker, cut the signals feeding the module and
+interpose: forward everything unchanged by default, rewrite only what you
+choose. A man-in-the-middle rather than a shouted contradiction.
+
+**Why this beats route 4 (broadcast spoofing) outright:** spoofing tells every
+module on the bus the same lie. A gateway modifies only what the *cluster*
+receives; everything on the far side still sees truth. Scalpel, not shotgun.
+There's also no bus contention — you're not racing the real sender for the
+last word, because its frame never arrives.
+
+Inputs come in two kinds, needing different hardware:
+
+| Input kind | Examples | Interception |
+|---|---|---|
+| **Discrete wires** | buckle switch, door pin switches, possibly the gate latch | one relay per signal: normally-closed = passthrough, energize to open and drive our own level |
+| **CAN-carried** | speed, ignition, gear, belt status from other modules | two-transceiver gateway: RX on segment A, forward to segment B, rewrite selected frames in transit |
+
+**Fail-closed bypass is mandatory.** A dead or unpowered board on a cut bus
+means the cluster receives *nothing* — no speedo, no warnings. A
+normally-closed relay bridging both segments when unpowered turns that from
+"the car breaks" into "the car reverts to stock." Same fail-safe direction as
+the speaker tap, and not optional here.
+
+**Input and output interception are complementary**, which is why the end
+state wants both:
+
+| | Input interception | Output interception |
+|---|---|---|
+| The chime | never decided on — prevented | silenced after the fact |
+| The telltale light | also suppressed (coherent) | still illuminates |
+| Chimes whose trigger we didn't tap | no help | still works |
+| Substituting a custom sound | no | yes |
+
+Input control gives *coherent* behavior — no chime **and** no dash light,
+because the cluster genuinely believes the gate is shut. Output control gives
+universal coverage and sound replacement.
+
+**Costs:** more invasive (cutting the bus or discrete wires behind the dash),
+needs a third transceiver, and raises the stakes of a board failure — hence
+the bypass relay. Recon has to establish whether the cluster sits on its own
+stub or shares a segment with other modules; sharing means you become the
+gateway for everything on it.
+
 ### 4. Gateway spoofing — available, with the messiest blast radius
 
 Transmit CAN frames asserting "gate closed" so the cluster never chimes.
@@ -205,6 +250,7 @@ dash. What plugs into that connector is then a reversible decision, forever:
 | Toggle switch | **v1** — loud / mute (/ quiet) | an hour |
 | Attenuator pot | v2 — continuous volume | trivial once v1 exists |
 | S3 interception board | v3 — per-chime control + substitution | the real project |
+| + input gateway (route 3b) | v4 — coherent suppression: no chime *and* no telltale | the complete answer |
 
 The cluster comes out exactly once. Everything after is a plug swap in the
 footwell.
