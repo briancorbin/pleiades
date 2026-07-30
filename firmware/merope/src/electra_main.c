@@ -19,9 +19,21 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "board_led.h"
 #include "merope_frames.h"
 
 static const char *TAG = "electra";
+
+// Board identity: amber = the fake car. (Merope wears violet.) Two identical
+// dev boards on a desk are otherwise indistinguishable.
+/// Amber when the bus is healthy, red when it isn't — glanceable status.
+static void led_set(bool healthy) {
+    if (healthy) {
+        board_led_set(40, 18, 0);
+    } else {
+        board_led_set(40, 0, 0);
+    }
+}
 
 #define BOOT_BUTTON GPIO_NUM_0
 #define TX_PERIOD_MS 100  // 10 Hz telemetry
@@ -54,6 +66,9 @@ static void drive_cycle(uint32_t ms, float *rpm, float *speed, float *coolant,
     *coolant = 22.0f + (warm > 1.0f ? 1.0f : warm) * 68.0f;
 }
 
+static uint32_t tx_ok = 0;
+static uint32_t tx_fail = 0;
+
 static void send(mrp_can_frame_t frame) {
     twai_message_t msg = {
         .identifier = frame.id,
@@ -62,9 +77,41 @@ static void send(mrp_can_frame_t frame) {
     for (int i = 0; i < frame.len; i++) {
         msg.data[i] = frame.data[i];
     }
-    esp_err_t err = twai_transmit(&msg, pdMS_TO_TICKS(50));
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "tx 0x%03X failed: %s", frame.id, esp_err_to_name(err));
+    if (twai_transmit(&msg, pdMS_TO_TICKS(50)) == ESP_OK) {
+        tx_ok++;
+    } else {
+        tx_fail++;
+    }
+}
+
+/// The controller's own view of the bus. Bus-off with a high TX error count
+/// means the transmitted bits aren't coming back — wiring, not software.
+static void report_bus(void) {
+    twai_status_info_t status;
+    if (twai_get_status_info(&status) != ESP_OK) {
+        ESP_LOGE(TAG, "cannot read TWAI status");
+        return;
+    }
+    const char *state = status.state == TWAI_STATE_RUNNING    ? "RUNNING"
+                        : status.state == TWAI_STATE_BUS_OFF  ? "BUS_OFF"
+                        : status.state == TWAI_STATE_RECOVERING ? "RECOVERING"
+                                                                : "STOPPED";
+    ESP_LOGI(TAG, "bus %s | tx ok %lu fail %lu | tx_err %lu rx_err %lu | queued %lu",
+             state, (unsigned long)tx_ok, (unsigned long)tx_fail,
+             (unsigned long)status.tx_error_counter,
+             (unsigned long)status.rx_error_counter,
+             (unsigned long)status.msgs_to_tx);
+    led_set(status.state == TWAI_STATE_RUNNING && status.tx_error_counter < 96 &&
+            status.rx_error_counter < 96);
+
+    if (status.state == TWAI_STATE_BUS_OFF) {
+        ESP_LOGW(TAG, "BUS_OFF — the controller sent bits and did not see them");
+        ESP_LOGW(TAG, "  return on the wire. Check: transceiver 3V3/GND, GPIO4→CTX,");
+        ESP_LOGW(TAG, "  GPIO5→CRX (try swapping these two), CANH↔CANH, CANL↔CANL.");
+        ESP_LOGW(TAG, "  Attempting recovery…");
+        twai_initiate_recovery();
+    } else if (status.state == TWAI_STATE_STOPPED) {
+        twai_start();
     }
 }
 
@@ -93,6 +140,8 @@ void app_main(void) {
         .pull_up_en = GPIO_PULLUP_ENABLE,
     };
     ESP_ERROR_CHECK(gpio_config(&button));
+    board_led_init();
+    led_set(true);
 
     twai_general_config_t general =
         TWAI_GENERAL_CONFIG_DEFAULT(MRP_TWAI_TX, MRP_TWAI_RX, TWAI_MODE_NO_ACK);
@@ -116,9 +165,10 @@ void app_main(void) {
         if (tick % STATUS_EVERY == 0) {
             send(mrp_frame_status(mil_on, dtc_count));
         }
-        if (tick % 50 == 0) {
+        if (tick % 20 == 0) {
             ESP_LOGI(TAG, "rpm %.0f  speed %.0f  coolant %.0f  mil %d",
                      rpm, speed, coolant, mil_on);
+            report_bus();
         }
 
         tick++;

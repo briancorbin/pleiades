@@ -1,0 +1,10 @@
+# Console on the native USB port (USB Serial/JTAG), not UART0.
+#
+# The DevKitC-1 has two USB-C ports: UART0 goes through a bridge chip that
+# macOS has no driver for, so its device node never appears. The native USB
+# port always enumerates. Putting the console there means one cable per board
+# does both flashing and monitoring.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# 16 MB flash on the N16R8 boards.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
