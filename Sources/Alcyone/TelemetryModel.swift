@@ -120,7 +120,7 @@ public final class TelemetryModel: ObservableObject {
     /// Hysteresis state resets — acceptable, the rules just changed.
     public func setRules(_ rules: [AlertRule]) {
         sterope = SteropeEngine(rules: rules)
-        alerts = sterope.evaluate(readings)
+        alerts = sterope.evaluate(allSignals())
         // No sound here: re-evaluating after an edit isn't a new event.
     }
 
@@ -186,39 +186,28 @@ public final class TelemetryModel: ObservableObject {
             dtcs = current
         }
         await flushDueWindows()
-        var evaluated = sterope.evaluate(readings)
-        var started = sterope.started
-        // The gate alert isn't a threshold on a number — it's a latch state,
-        // and it's suppressed when hauling is deliberate.
-        if let gateAlert = gateAlert() {
-            evaluated.append(gateAlert)
-            if !wasGateAlerting {
-                started.append(gateAlert)
-            }
-            wasGateAlerting = true
-        } else {
-            wasGateAlerting = false
-        }
-        alerts = evaluated
-        playSounds(for: started)
+        alerts = sterope.evaluate(allSignals()).filter { !suppressed($0) }
+        playSounds(for: sterope.started.filter { !suppressed($0) })
     }
 
-    private var wasGateAlerting = false
+    /// PID readings and proprietary signals share one keyspace — PID codes
+    /// below 0x100, proprietary above — so a rule can watch either.
+    private func allSignals() -> [UInt16: Double] {
+        var merged: [UInt16: Double] = [:]
+        for (code, value) in readings {
+            merged[UInt16(code)] = value
+        }
+        for (id, value) in proprietary {
+            merged[id] = value
+        }
+        return merged
+    }
 
-    /// Hauling mode is the user saying "yes, I know, it's deliberate" — the
-    /// whole point of the project. Off, an open gate is worth a banner.
-    private func gateAlert() -> Alert? {
-        guard hasProprietary, gateOpen else { return nil }
-        guard !UserDefaults.standard.bool(forKey: "alcyone.haulingMode") else { return nil }
-        return Alert(
-            id: "gate.open",
-            severity: .warning,
-            message: "Rear gate open",
-            value: 1,
-            unit: "",
-            sound: .builtIn("chime"),
-            volume: 1.0
-        )
+    /// Hauling mode is a *temporary* "yes, I know, it's deliberate" for the
+    /// gate — distinct from disabling the rule outright in the Alerts tab,
+    /// which is the permanent preference.
+    private func suppressed(_ alert: Alert) -> Bool {
+        alert.id == "gate.open" && UserDefaults.standard.bool(forKey: "alcyone.haulingMode")
     }
 
     /// Sound plays on the rising edge only — once per event, not once per

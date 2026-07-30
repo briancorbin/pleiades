@@ -164,7 +164,7 @@ final class RuleSwappingTests: XCTestCase {
             .appendingPathComponent("alcyone-rules-\(UUID().uuidString)", isDirectory: true)
         let store = RuleStore(directory: dir)
         await store.save([StoredRule(
-            id: "custom.rpm", pidCode: PID.rpm.code, kind: .above, limit: 100,
+            id: "custom.rpm", signalID: UInt16(PID.rpm.code), kind: .above, limit: 100,
             clearMargin: 10, severity: .warning, message: "custom store rule"
         )])
 

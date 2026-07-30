@@ -1,9 +1,9 @@
 import Foundation
 import Maia
 
-/// The persistence form of an AlertRule: PIDs stored by code and resolved
-/// against Maia's catalog at load, so the JSON stays stable if decode
-/// closures change.
+/// The persistence form of an AlertRule. Signals are stored by numeric id —
+/// PID codes below 0x100, proprietary CAN signals above — and resolved at
+/// load, so the JSON stays stable if decode closures change.
 public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
     public enum Kind: String, Codable, Sendable {
         case above
@@ -11,7 +11,7 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
     }
 
     public var id: String
-    public var pidCode: UInt8
+    public var signalID: UInt16
     public var kind: Kind
     public var limit: Double
     public var clearMargin: Double
@@ -24,7 +24,7 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
 
     public init(
         id: String = UUID().uuidString,
-        pidCode: UInt8,
+        signalID: UInt16,
         kind: Kind,
         limit: Double,
         clearMargin: Double,
@@ -35,7 +35,7 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
         volume: Double = 1.0
     ) {
         self.id = id
-        self.pidCode = pidCode
+        self.signalID = signalID
         self.kind = kind
         self.limit = limit
         self.clearMargin = clearMargin
@@ -50,7 +50,13 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
-        pidCode = try c.decode(UInt8.self, forKey: .pidCode)
+        // Rule files written before proprietary signals existed key on
+        // `pidCode`; PID codes are a subset of the signal id space.
+        if let sid = try c.decodeIfPresent(UInt16.self, forKey: .signalID) {
+            signalID = sid
+        } else {
+            signalID = UInt16(try c.decode(UInt8.self, forKey: .pidCode))
+        }
         kind = try c.decode(Kind.self, forKey: .kind)
         limit = try c.decode(Double.self, forKey: .limit)
         clearMargin = try c.decode(Double.self, forKey: .clearMargin)
@@ -59,6 +65,26 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         sound = try c.decodeIfPresent(AlertSound.self, forKey: .sound) ?? .silent
         volume = try c.decodeIfPresent(Double.self, forKey: .volume) ?? 1.0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, signalID, pidCode, kind, limit, clearMargin
+        case severity, message, enabled, sound, volume
+    }
+
+    // `pidCode` is read-only legacy — never written, so encoding is explicit.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(signalID, forKey: .signalID)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(limit, forKey: .limit)
+        try c.encode(clearMargin, forKey: .clearMargin)
+        try c.encode(severity, forKey: .severity)
+        try c.encode(message, forKey: .message)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encode(sound, forKey: .sound)
+        try c.encode(volume, forKey: .volume)
     }
 
     public init(from rule: AlertRule, enabled: Bool = true) {
@@ -73,22 +99,22 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
             limit = l
         }
         self.init(
-            id: rule.id, pidCode: rule.pid.code, kind: kind, limit: limit,
+            id: rule.id, signalID: rule.signal.id, kind: kind, limit: limit,
             clearMargin: rule.clearMargin, severity: rule.severity,
             message: rule.message, enabled: enabled,
             sound: rule.sound, volume: rule.volume
         )
     }
 
-    public var pid: PID? {
-        PID.all.first { $0.code == pidCode }
+    public var signal: SignalRef? {
+        SignalRef.resolve(signalID)
     }
 
     /// Nil when disabled or the PID code isn't in the catalog.
     public func alertRule() -> AlertRule? {
-        guard enabled, let pid else { return nil }
+        guard enabled, let signal else { return nil }
         return AlertRule(
-            id: id, pid: pid,
+            id: id, signal: signal,
             trigger: kind == .above ? .above(limit) : .below(limit),
             clearMargin: clearMargin, severity: severity, message: message,
             sound: sound, volume: volume

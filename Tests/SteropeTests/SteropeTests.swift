@@ -10,20 +10,20 @@ final class SteropeEngineTests: XCTestCase {
 
     func testAboveRuleFires() {
         var engine = SteropeEngine(rules: [hotCoolant])
-        let alerts = engine.evaluate([PID.coolantTemp.code: 101])
+        let alerts = engine.evaluate([UInt16(PID.coolantTemp.code): 101])
         XCTAssertEqual(alerts.map(\.id), ["test.hot"])
         XCTAssertEqual(alerts.first?.value, 101)
     }
 
     func testHysteresisHoldsUntilClearMargin() {
         var engine = SteropeEngine(rules: [hotCoolant])
-        _ = engine.evaluate([PID.coolantTemp.code: 101])
+        _ = engine.evaluate([UInt16(PID.coolantTemp.code): 101])
         // Back under the limit but inside the margin: still firing.
-        XCTAssertEqual(engine.evaluate([PID.coolantTemp.code: 95]).count, 1)
+        XCTAssertEqual(engine.evaluate([UInt16(PID.coolantTemp.code): 95]).count, 1)
         // Past the margin: cleared.
-        XCTAssertEqual(engine.evaluate([PID.coolantTemp.code: 89]).count, 0)
+        XCTAssertEqual(engine.evaluate([UInt16(PID.coolantTemp.code): 89]).count, 0)
         // And it doesn't re-fire until the limit is crossed again.
-        XCTAssertEqual(engine.evaluate([PID.coolantTemp.code: 95]).count, 0)
+        XCTAssertEqual(engine.evaluate([UInt16(PID.coolantTemp.code): 95]).count, 0)
     }
 
     func testBelowRuleFires() {
@@ -32,9 +32,9 @@ final class SteropeEngineTests: XCTestCase {
             severity: .critical, message: "fuel"
         )
         var engine = SteropeEngine(rules: [lowFuel])
-        XCTAssertEqual(engine.evaluate([PID.fuelLevel.code: 14]).first?.severity, .critical)
-        XCTAssertEqual(engine.evaluate([PID.fuelLevel.code: 16]).count, 1)  // inside margin
-        XCTAssertEqual(engine.evaluate([PID.fuelLevel.code: 19]).count, 0)
+        XCTAssertEqual(engine.evaluate([UInt16(PID.fuelLevel.code): 14]).first?.severity, .critical)
+        XCTAssertEqual(engine.evaluate([UInt16(PID.fuelLevel.code): 16]).count, 1)  // inside margin
+        XCTAssertEqual(engine.evaluate([UInt16(PID.fuelLevel.code): 19]).count, 0)
     }
 
     func testMissingReadingDoesNotFire() {
@@ -44,17 +44,17 @@ final class SteropeEngineTests: XCTestCase {
 
     func testForesterDefaultsQuietOnHealthyCar() {
         var engine = SteropeEngine(rules: .foresterDefaults)
-        let healthy: [UInt8: Double] = [
-            PID.coolantTemp.code: 90, PID.oilTemp.code: 95,
-            PID.controlModuleVoltage.code: 13.9, PID.rpm.code: 2200,
-            PID.fuelLevel.code: 75,
+        let healthy: [UInt16: Double] = [
+            UInt16(PID.coolantTemp.code): 90, UInt16(PID.oilTemp.code): 95,
+            UInt16(PID.controlModuleVoltage.code): 13.9, UInt16(PID.rpm.code): 2200,
+            UInt16(PID.fuelLevel.code): 75,
         ]
         XCTAssertEqual(engine.evaluate(healthy).count, 0)
     }
 
     func testForesterDefaultsCatchOverheat() {
         var engine = SteropeEngine(rules: .foresterDefaults)
-        let overheating: [UInt8: Double] = [PID.coolantTemp.code: 118]
+        let overheating: [UInt16: Double] = [UInt16(PID.coolantTemp.code): 118]
         let alerts = engine.evaluate(overheating)
         XCTAssertEqual(alerts.count, 2)  // hot + overheat both fire
         XCTAssertTrue(alerts.contains { $0.severity == .critical })
@@ -64,24 +64,24 @@ final class SteropeEngineTests: XCTestCase {
 final class StoredRuleTests: XCTestCase {
     func testConversionRoundTrip() {
         let stored = StoredRule(
-            pidCode: PID.coolantTemp.code, kind: .above, limit: 105,
+            signalID: UInt16(PID.coolantTemp.code), kind: .above, limit: 105,
             clearMargin: 5, severity: .critical, message: "hot"
         )
         let rule = stored.alertRule()
         XCTAssertNotNil(rule)
-        XCTAssertEqual(rule?.pid, .coolantTemp)
+        XCTAssertEqual(rule?.signal, .pid(.coolantTemp))
         XCTAssertEqual(rule?.trigger, .above(105))
         XCTAssertEqual(rule?.severity, .critical)
 
         let back = StoredRule(from: rule!)
-        XCTAssertEqual(back.pidCode, stored.pidCode)
+        XCTAssertEqual(back.signalID, stored.signalID)
         XCTAssertEqual(back.limit, 105)
         XCTAssertEqual(back.kind, .above)
     }
 
     func testDisabledRuleProducesNoAlertRule() {
         var stored = StoredRule(
-            pidCode: PID.rpm.code, kind: .above, limit: 6000,
+            signalID: UInt16(PID.rpm.code), kind: .above, limit: 6000,
             clearMargin: 300, severity: .warning, message: "redline"
         )
         stored.enabled = false
@@ -91,7 +91,7 @@ final class StoredRuleTests: XCTestCase {
 
     func testUnknownPIDCodeProducesNoAlertRule() {
         let stored = StoredRule(
-            pidCode: 0xEE, kind: .above, limit: 1,
+            signalID: 0xEEE, kind: .above, limit: 1,
             clearMargin: 0, severity: .warning, message: "ghost"
         )
         XCTAssertNil(stored.alertRule())
@@ -122,7 +122,7 @@ final class RuleStoreTests: XCTestCase {
         var rules = await store.all()
         rules[0].enabled = false
         rules.append(StoredRule(
-            pidCode: PID.oilTemp.code, kind: .above, limit: 130,
+            signalID: UInt16(PID.oilTemp.code), kind: .above, limit: 130,
             clearMargin: 5, severity: .critical, message: "custom"
         ))
         await store.save(rules)
@@ -179,12 +179,12 @@ final class AlertSoundPersistenceTests: XCTestCase {
             severity: .warning, message: "up", sound: .builtIn("chime")
         )
         var engine = SteropeEngine(rules: [rule])
-        _ = engine.evaluate([PID.rpm.code: 2000])
+        _ = engine.evaluate([UInt16(PID.rpm.code): 2000])
         XCTAssertEqual(engine.started.map(\.id), ["edge"])
-        _ = engine.evaluate([PID.rpm.code: 2100])
+        _ = engine.evaluate([UInt16(PID.rpm.code): 2100])
         XCTAssertEqual(engine.started.count, 0)  // still firing, not new
-        _ = engine.evaluate([PID.rpm.code: 500])
-        _ = engine.evaluate([PID.rpm.code: 2000])
+        _ = engine.evaluate([UInt16(PID.rpm.code): 500])
+        _ = engine.evaluate([UInt16(PID.rpm.code): 2000])
         XCTAssertEqual(engine.started.map(\.id), ["edge"])
     }
 }

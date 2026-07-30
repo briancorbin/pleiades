@@ -160,8 +160,14 @@ public struct AlertsView: View {
     }
 
     private func conditionText(_ rule: StoredRule) -> String {
-        let name = rule.pid?.name ?? String(format: "PID %02X", rule.pidCode)
-        let unit = rule.pid?.unit ?? ""
+        let signal = rule.signal
+        let name = signal?.name ?? String(format: "signal %03X", rule.signalID)
+        // Booleans read as a state, not a threshold: "> 0.5" means nothing.
+        if signal?.isBoolean == true {
+            let state = rule.kind == .above ? "open / on" : "closed / off"
+            return "\(name) is \(state)"
+        }
+        let unit = signal?.unit ?? ""
         let comparator = rule.kind == .above ? ">" : "<"
         return "\(name) \(comparator) \(rule.limit.formatted()) \(unit)  ·  clears at ±\(rule.clearMargin.formatted())"
     }
@@ -182,7 +188,7 @@ public struct AlertsView: View {
         HStack(spacing: 12) {
             Button {
                 editingRule = StoredRule(
-                    pidCode: PID.coolantTemp.code, kind: .above, limit: 100,
+                    signalID: UInt16(PID.coolantTemp.code), kind: .above, limit: 100,
                     clearMargin: 4, severity: .warning, message: "New alert"
                 )
             } label: {
@@ -210,6 +216,10 @@ struct RuleEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    private var isBooleanSignal: Bool {
+        SignalRef.resolve(rule.signalID)?.isBoolean ?? false
+    }
+
     private var soundOptions: [AlertSound] {
         AlertSound.allBuiltIns + AlertSoundLibrary.customSounds()
     }
@@ -226,21 +236,30 @@ struct RuleEditorView: View {
                     .textFieldStyle(.roundedBorder)
             }
             labeledRow("Signal") {
-                Picker("", selection: $rule.pidCode) {
-                    ForEach(PID.all, id: \.code) { pid in
-                        Text("\(pid.name) (\(pid.unit))").tag(pid.code)
+                Picker("", selection: $rule.signalID) {
+                    Section("Standard PIDs") {
+                        ForEach(PID.all, id: \.code) { pid in
+                            Text("\(pid.name) (\(pid.unit))").tag(UInt16(pid.code))
+                        }
+                    }
+                    Section("CAN tap only") {
+                        ForEach(ProprietarySignal.all, id: \.id) { signal in
+                            Text(signal.unit.isEmpty ? signal.name : "\(signal.name) (\(signal.unit))")
+                                .tag(signal.id)
+                        }
                     }
                 }
                 .labelsHidden()
             }
-            labeledRow("Trigger") {
+            labeledRow(isBooleanSignal ? "Alert when" : "Trigger") {
                 Picker("", selection: $rule.kind) {
-                    Text("Above").tag(StoredRule.Kind.above)
-                    Text("Below").tag(StoredRule.Kind.below)
+                    Text(isBooleanSignal ? "Open / on" : "Above").tag(StoredRule.Kind.above)
+                    Text(isBooleanSignal ? "Closed / off" : "Below").tag(StoredRule.Kind.below)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
             }
+            if !isBooleanSignal {
             HStack(spacing: 16) {
                 labeledRow("Limit") {
                     TextField("", value: $rule.limit, format: .number, prompt: Text("0"))
@@ -252,6 +271,7 @@ struct RuleEditorView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
                 }
+            }
             }
             labeledRow("Severity") {
                 Picker("", selection: $rule.severity) {

@@ -15,7 +15,7 @@ public enum Trigger: Sendable, Equatable {
 
 public struct AlertRule: Sendable, Identifiable {
     public let id: String
-    public let pid: PID
+    public let signal: SignalRef
     public let trigger: Trigger
     /// Hysteresis: once firing, the value must retreat this far past the
     /// limit to clear. Kills flapping on a value hovering at the line.
@@ -30,7 +30,7 @@ public struct AlertRule: Sendable, Identifiable {
 
     public init(
         id: String,
-        pid: PID,
+        signal: SignalRef,
         trigger: Trigger,
         clearMargin: Double,
         severity: Severity,
@@ -39,13 +39,26 @@ public struct AlertRule: Sendable, Identifiable {
         volume: Double = 1.0
     ) {
         self.id = id
-        self.pid = pid
+        self.signal = signal
         self.trigger = trigger
         self.clearMargin = clearMargin
         self.severity = severity
         self.message = message
         self.sound = sound
         self.volume = volume
+    }
+}
+
+public extension AlertRule {
+    /// Convenience for PID-based rules.
+    init(
+        id: String, pid: PID, trigger: Trigger, clearMargin: Double,
+        severity: Severity, message: String,
+        sound: AlertSound = .silent, volume: Double = 1.0
+    ) {
+        self.init(id: id, signal: .pid(pid), trigger: trigger,
+                  clearMargin: clearMargin, severity: severity,
+                  message: message, sound: sound, volume: volume)
     }
 }
 
@@ -91,11 +104,11 @@ public struct SteropeEngine: Sendable {
         self.rules = rules
     }
 
-    public mutating func evaluate(_ readings: [UInt8: Double]) -> [Alert] {
+    public mutating func evaluate(_ readings: [UInt16: Double]) -> [Alert] {
         var alerts: [Alert] = []
         var justStarted: [Alert] = []
         for rule in rules {
-            guard let value = readings[rule.pid.code] else { continue }
+            guard let value = readings[rule.signal.id] else { continue }
             let wasActive = active.contains(rule.id)
             let firing: Bool
             switch rule.trigger {
@@ -111,7 +124,7 @@ public struct SteropeEngine: Sendable {
                     severity: rule.severity,
                     message: rule.message,
                     value: value,
-                    unit: rule.pid.unit,
+                    unit: rule.signal.unit,
                     sound: rule.sound,
                     volume: rule.volume
                 )
@@ -148,5 +161,27 @@ public extension Array where Element == AlertRule {
                   severity: .warning, message: "Fuel low", sound: .builtIn("soft")),
         AlertRule(id: "fuel.critical", pid: .fuelLevel, trigger: .below(8), clearMargin: 2,
                   severity: .critical, message: "Fuel critical", sound: .builtIn("alert")),
+
+        // Proprietary signals — only fire when a CAN tap is connected, since
+        // nothing else can see them. They sit in the same list with the same
+        // on/off toggle as everything above.
+        AlertRule(id: "gate.open", signal: .proprietary(.gate), trigger: .above(0.5),
+                  clearMargin: 0, severity: .warning, message: "Rear gate open",
+                  sound: .builtIn("chime")),
+        AlertRule(id: "belt.driver", signal: .proprietary(.beltDriver), trigger: .below(0.5),
+                  clearMargin: 0, severity: .warning, message: "Driver belt unbuckled",
+                  sound: .silent),
+        AlertRule(id: "tpms.fl", signal: .proprietary(.tpmsFrontLeft), trigger: .below(193),
+                  clearMargin: 7, severity: .warning, message: "Front left tire low",
+                  sound: .builtIn("soft")),
+        AlertRule(id: "tpms.fr", signal: .proprietary(.tpmsFrontRight), trigger: .below(193),
+                  clearMargin: 7, severity: .warning, message: "Front right tire low",
+                  sound: .builtIn("soft")),
+        AlertRule(id: "tpms.rl", signal: .proprietary(.tpmsRearLeft), trigger: .below(193),
+                  clearMargin: 7, severity: .warning, message: "Rear left tire low",
+                  sound: .builtIn("soft")),
+        AlertRule(id: "tpms.rr", signal: .proprietary(.tpmsRearRight), trigger: .below(193),
+                  clearMargin: 7, severity: .warning, message: "Rear right tire low",
+                  sound: .builtIn("soft")),
     ]
 }
