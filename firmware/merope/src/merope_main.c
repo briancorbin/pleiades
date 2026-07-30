@@ -173,7 +173,7 @@ void app_main(void) {
                 if (frames_seen == 0 && status.rx_error_counter == 0) {
                     ESP_LOGW(TAG, "  Zero frames AND zero errors: the controller sees an idle");
                     ESP_LOGW(TAG, "  bus. Check this board's transceiver 3V3/GND and the");
-                    ESP_LOGW(TAG, "  CRX→GPIO5 wire — an unpowered transceiver reads idle.");
+                    ESP_LOGW(TAG, "  CRX→GPIO4 wire — an unpowered transceiver reads idle.");
                 }
             }
         }

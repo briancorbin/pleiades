@@ -11,8 +11,8 @@ Two ESP32-S3 boards, two SN65HVD230 transceivers, one two-node CAN bus.
         ┌───────────────┐                          ┌───────────────┐
         │           3V3 ├──────┐            ┌──────┤ 3V3           │
         │           GND ├────┐ │            │ ┌────┤ GND           │
-        │        GPIO 4 ├──┐ │ │            │ │ ┌──┤ GPIO 4        │
-        │        GPIO 5 ├┐ │ │ │            │ │ │┌─┤ GPIO 5        │
+        │      GPIO 5/TX├──┐ │ │            │ │ ┌──┤ GPIO 5/TX     │
+        │      GPIO 4/RX├┐ │ │ │            │ │ │┌─┤ GPIO 4/RX     │
         └───────────────┘│ │ │ │            │ │ ││ └───────────────┘
                          │ │ │ │            │ │ ││
                     ┌────┼─┼─┼─┼────┐  ┌────┼─┼─┼┼────┐
@@ -38,8 +38,8 @@ Two ESP32-S3 boards, two SN65HVD230 transceivers, one two-node CAN bus.
 |---|---|---|---|
 | `3V3` | → | `3.3V` | `VCC` |
 | `GND` | → | `GND` | |
-| `4` | → | `CTX` | `CAN_TX`, `D`, `TXD` |
-| `5` | → | `CRX` | `CAN_RX`, `R`, `RXD` |
+| `5` (TWAI TX) | → | `CTX` | `CAN_TX`, `D`, `TXD` |
+| `4` (TWAI RX) | → | `CRX` | `CAN_RX`, `R`, `RXD` |
 
 Nothing about this differs between the two boards — they're wired the same;
 only the flashed firmware differs.
@@ -75,10 +75,10 @@ prints error counters rather than just "it didn't work":
 
 | Symptom | Meaning | Look at |
 |---|---|---|
-| `BUS_OFF`, `tx_err` climbing, `rx_err 0` | transmitted bits never came back | transceiver power; CTX wire |
-| `RUNNING`, `queued` stuck, no errors at all | RX pin reads permanently dominant — controller never sees an idle bus, so it never starts | transceiver power; CRX wire |
+| `BUS_OFF`, `tx_err` climbing, `rx_err 0` | transmitted bits never came back | transceiver power; GPIO5→CTX wire |
+| `RUNNING`, `queued` stuck, no errors at all | RX pin reads permanently dominant — controller never sees an idle bus, so it never starts | transceiver power; GPIO4→CRX wire |
 | `RECOVERING` forever | bus held dominant; recovery needs an idle bus it never gets | a transceiver driving the bus low |
-| `0 frames AND rx_err 0` on the receiver | controller sees a genuinely idle bus | that board's power and CRX wire — signal isn't arriving at all |
+| `0 frames AND rx_err 0` on the receiver | controller sees a genuinely idle bus | that board's power and GPIO4→CRX wire — signal isn't arriving at all |
 | `rx_err` climbing on the receiver | signal *is* arriving but malformed | crossed CANH/CANL, bitrate mismatch |
 
 The distinction in the last two rows is the important one: on a listen-only

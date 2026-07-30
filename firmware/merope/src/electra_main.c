@@ -106,8 +106,8 @@ static void report_bus(void) {
 
     if (status.state == TWAI_STATE_BUS_OFF) {
         ESP_LOGW(TAG, "BUS_OFF — the controller sent bits and did not see them");
-        ESP_LOGW(TAG, "  return on the wire. Check: transceiver 3V3/GND, GPIO4→CTX,");
-        ESP_LOGW(TAG, "  GPIO5→CRX (try swapping these two), CANH↔CANH, CANL↔CANL.");
+        ESP_LOGW(TAG, "  return on the wire. Check: transceiver 3V3/GND, GPIO5→CTX,");
+        ESP_LOGW(TAG, "  GPIO4→CRX, CANH↔CANH, CANL↔CANL, and GND everywhere.");
         ESP_LOGW(TAG, "  Attempting recovery…");
         twai_initiate_recovery();
     } else if (status.state == TWAI_STATE_STOPPED) {
