@@ -19,6 +19,7 @@
 #include "freertos/task.h"
 
 #include "board_led.h"
+#include "merope_ble.h"
 #include "merope_event.h"
 #include "merope_frames.h"
 #include "merope_ring.h"
@@ -99,6 +100,7 @@ void app_main(void) {
     mrp_watch_init(&watch, WINDOW_PRE_MS, WINDOW_POST_MS);
     board_led_init();
     led_set(22, 17, 28);  // dim violet: alive, no traffic yet
+    mrp_ble_init();
 
     twai_general_config_t general =
         TWAI_GENERAL_CONFIG_DEFAULT(MRP_TWAI_TX, MRP_TWAI_RX, TWAI_MODE_LISTEN_ONLY);
@@ -130,6 +132,7 @@ void app_main(void) {
             if (mrp_frame_status_decode(&frame, &mil, &count)) {
                 last_mil = mil;
                 last_dtc_count = count;
+                mrp_ble_update_status(mil, count);
                 if (mrp_watch_feed(&watch, t, mil, count)) {
                     ESP_LOGW(TAG, "FAULT detected at %lu ms — capturing %d ms of context",
                              (unsigned long)t, WINDOW_POST_MS);
@@ -139,6 +142,7 @@ void app_main(void) {
                 size_t n = mrp_frame_decode(&frame, t, decoded, 8);
                 for (size_t i = 0; i < n; i++) {
                     mrp_ring_push(&ring, decoded[i]);
+                    mrp_ble_update_signal(decoded[i].signal, decoded[i].value);
                 }
             }
         }
@@ -154,8 +158,9 @@ void app_main(void) {
             // Bright violet once traffic is flowing, dim when the bus is quiet.
             led_set(frames_seen > 0 ? 45 : 22, frames_seen > 0 ? 34 : 17,
                     frames_seen > 0 ? 58 : 28);
-            ESP_LOGI(TAG, "%lu frames seen, %u samples buffered, MIL %d",
-                     (unsigned long)frames_seen, (unsigned)mrp_ring_count(&ring), last_mil);
+            ESP_LOGI(TAG, "%lu frames seen, %u samples buffered, MIL %d | BLE: %s",
+                     (unsigned long)frames_seen, (unsigned)mrp_ring_count(&ring), last_mil,
+                     mrp_ble_state());
 
             // A receiver that sees nothing and reports nothing is ambiguous:
             // an idle bus and a dead receive path look identical. The error
