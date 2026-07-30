@@ -163,14 +163,10 @@ public extension Array where Element == AlertRule {
                   severity: .critical, message: "Fuel critical", sound: .builtIn("alert")),
 
         // Proprietary signals — only fire when a CAN tap is connected, since
-        // nothing else can see them. They sit in the same list with the same
-        // on/off toggle as everything above.
-        AlertRule(id: "gate.open", signal: .proprietary(.gate), trigger: .above(0.5),
-                  clearMargin: 0, severity: .warning, message: "Rear gate open",
-                  sound: .builtIn("chime")),
-        AlertRule(id: "belt.driver", signal: .proprietary(.beltDriver), trigger: .below(0.5),
-                  clearMargin: 0, severity: .warning, message: "Driver belt unbuckled",
-                  sound: .silent),
+        // nothing else can see them. Note what's *not* here: gate ajar and
+        // seatbelt. The car already warns about those, so re-raising them as
+        // our own alerts would be duplicating a chime rather than doing
+        // anything about it. They're chime policies instead (see Chime).
         AlertRule(id: "tpms.fl", signal: .proprietary(.tpmsFrontLeft), trigger: .below(193),
                   clearMargin: 7, severity: .warning, message: "Front left tire low",
                   sound: .builtIn("soft")),

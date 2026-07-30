@@ -7,6 +7,7 @@ import SwiftUI
 @main
 struct AlcyoneIOSApp: App {
     private let ruleStore = RuleStore()
+    private let chimeStore = ChimePolicyStore()
     @AppStorage("alcyone.source") private var sourceSelection = TelemetrySourceKind.electra.rawValue
 
     var body: some Scene {
@@ -14,7 +15,8 @@ struct AlcyoneIOSApp: App {
             SourceHostView(
                 kind: TelemetrySourceKind(rawValue: sourceSelection) ?? .electra,
                 selection: $sourceSelection,
-                ruleStore: ruleStore
+                ruleStore: ruleStore,
+                chimeStore: chimeStore
             )
             .id(sourceSelection)  // selection change → fresh source + model
         }

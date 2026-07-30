@@ -186,8 +186,8 @@ public final class TelemetryModel: ObservableObject {
             dtcs = current
         }
         await flushDueWindows()
-        alerts = sterope.evaluate(allSignals()).filter { !suppressed($0) }
-        playSounds(for: sterope.started.filter { !suppressed($0) })
+        alerts = sterope.evaluate(allSignals())
+        playSounds(for: sterope.started)
     }
 
     /// PID readings and proprietary signals share one keyspace — PID codes
@@ -203,12 +203,6 @@ public final class TelemetryModel: ObservableObject {
         return merged
     }
 
-    /// Hauling mode is a *temporary* "yes, I know, it's deliberate" for the
-    /// gate — distinct from disabling the rule outright in the Alerts tab,
-    /// which is the permanent preference.
-    private func suppressed(_ alert: Alert) -> Bool {
-        alert.id == "gate.open" && UserDefaults.standard.bool(forKey: "alcyone.haulingMode")
-    }
 
     /// Sound plays on the rising edge only — once per event, not once per
     /// poll. Master switch and master volume gate every rule.

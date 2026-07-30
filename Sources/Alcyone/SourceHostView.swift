@@ -30,10 +30,13 @@ public struct SourceHostView: View {
     @Binding private var selection: String
     private let bench: ElectraSource?
     private let ruleStore: RuleStore
+    private let chimeStore: ChimePolicyStore
 
-    public init(kind: TelemetrySourceKind, selection: Binding<String>, ruleStore: RuleStore) {
+    public init(kind: TelemetrySourceKind, selection: Binding<String>,
+                ruleStore: RuleStore, chimeStore: ChimePolicyStore) {
         _selection = selection
         self.ruleStore = ruleStore
+        self.chimeStore = chimeStore
 
         #if canImport(CoreBluetooth)
         if kind == .dongle {
@@ -50,7 +53,8 @@ public struct SourceHostView: View {
     }
 
     public var body: some View {
-        RootView(model: model, bench: bench, ruleStore: ruleStore, sourceSelection: $selection)
+        RootView(model: model, bench: bench, ruleStore: ruleStore,
+                 chimeStore: chimeStore, sourceSelection: $selection)
             .onAppear { model.start() }
     }
 }

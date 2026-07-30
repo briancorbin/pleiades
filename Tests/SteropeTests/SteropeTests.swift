@@ -188,3 +188,42 @@ final class AlertSoundPersistenceTests: XCTestCase {
         XCTAssertEqual(engine.started.map(\.id), ["edge"])
     }
 }
+
+final class ChimePolicyTests: XCTestCase {
+    private func scratchDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("chimes-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    func testEveryChimeHasAPolicyDefaultingToPassthrough() async {
+        let store = ChimePolicyStore(directory: scratchDirectory())
+        let all = await store.all()
+        XCTAssertEqual(all.count, Chime.foresterChimes.count)
+        XCTAssertTrue(all.allSatisfy { $0.action == .passthrough })
+    }
+
+    func testPolicyPersists() async {
+        let dir = scratchDirectory()
+        let store = ChimePolicyStore(directory: dir)
+        await store.save(ChimePolicy(id: "gate", action: .replaced,
+                                     sound: .builtIn("soft"), volume: 0.4))
+
+        let reloaded = ChimePolicyStore(directory: dir)
+        let policy = await reloaded.policy(for: "gate")
+        XCTAssertEqual(policy.action, .replaced)
+        XCTAssertEqual(policy.sound, .builtIn("soft"))
+        XCTAssertEqual(policy.volume, 0.4)
+        // Untouched chimes stay stock.
+        let belt = await reloaded.policy(for: "seatbelt")
+        XCTAssertEqual(belt.action, .passthrough)
+    }
+
+    func testSteropeDefaultsDoNotDuplicateChimes() {
+        // The car already warns about the gate and the belt; re-raising them
+        // as our own alerts would duplicate a chime instead of mediating it.
+        let ids = [AlertRule].foresterDefaults.map(\.id)
+        XCTAssertFalse(ids.contains("gate.open"))
+        XCTAssertFalse(ids.contains("belt.driver"))
+        XCTAssertTrue(ids.contains("tpms.fl"))
+    }
+}

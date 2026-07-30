@@ -70,13 +70,19 @@ public struct VehicleView: View {
                     .tracking(1.5)
                     .foregroundStyle(haulingMode ? Theme.copper : Theme.redline)
                 Spacer()
-                Toggle("Hauling", isOn: $haulingMode)
-                    .labelsHidden()
-                    .tint(Theme.copper)
+                if haulingMode {
+                    Text("HAULING")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1)
+                        .foregroundStyle(Theme.copper)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.copper.opacity(0.15), in: Capsule())
+                }
             }
             Text(haulingMode
-                 ? "Hauling mode on — Sterope won't nag about the gate. Keep the load strapped, and crack a window: exhaust can draw into the cabin through an open gate."
-                 : "Flip hauling mode when this is deliberate. Off, the gate counts as a fault worth alerting on.")
+                 ? "Hauling mode is on for this trip. Keep the load strapped, and crack a window: exhaust can draw into the cabin through an open gate."
+                 : "The car will chime about this. What happens to that chime is set on the Chimes tab.")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textDim)
         }
