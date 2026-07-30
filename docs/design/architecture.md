@@ -137,8 +137,11 @@ names against sniffed traffic before trusting any of them.
 - The gate-ajar chime exists because exhaust can pull into the cabin through an
   open gate. Whatever Sterope eventually does about the chime, the CO caution
   stays in the docs. Windows cracked.
-- Merope is read-only on the bus until further notice. No TX onto a moving
-  car's CAN without a very deliberate design pass.
+- Merope transmits when we want it to. Listen-only is a *mode* we use during
+  recon (hearing without participating), not a policy. Practical caution
+  only: frames asserting state are read by modules we haven't decoded, so
+  effects can appear far from where they were aimed — which is what the
+  full-bus recording is for.
 
 ## Open questions
 

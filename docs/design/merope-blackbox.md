@@ -32,19 +32,19 @@ Electra philosophy, in C).
 
 FreeRTOS tasks:
 
-1. **CAN RX** — TWAI driver in **listen-only mode** (no ACK bit, electrically
-   incapable of disturbing the bus — the phase-3 read-only rule, enforced in
-   silicon). Hardware filters → decode signals of interest via a table
+1. **CAN RX** — TWAI driver in listen-only mode *during recon*: no ACK bit,
+   electrically unable to disturb the bus while we're still learning what's
+   on it. Not a permanent restriction — see SHED-93/94 for the transmit
+   path that makes Merope the single gateway. Hardware filters → decode signals of interest via a table
    derived from the opendbc Subaru DBC → push `(ms, signalId, value)` into
    the ring.
 2. **Ring buffer** — fixed circular array in PSRAM. Budget math: ~8 bytes per
    decoded update × a few hundred updates/sec ≈ 2 KB/s → 8 MB holds ~an hour;
    we only *need* 60 s pre + 30 s post per event.
-3. **Fault watcher** — passive-first: once the proprietary frame carrying
-   MIL/DTC-count state is decoded, watch it for edges. Until that frame is
-   found, fallback is actively polling PID 0101 once a second — but active
-   TX belongs on the OBD connector side (where the bus expects chatter), not
-   the tap, so the fallback lives behind a build flag.
+3. **Fault watcher** — passive-first because it's cheaper, not because TX is
+   forbidden: once the proprietary frame carrying MIL/DTC-count state is
+   decoded, watch it for edges. Fallback is polling PID 0101 once a second
+   (SHED-94's request scheduler).
 4. **Event writer** — on trigger: snapshot the pre-window, record the
    post-window, finalize one bounded event file to LittleFS.
 5. **Sync + transport** — BLE GATT service ("Merope"): list events, download
@@ -67,7 +67,8 @@ supplies the offset; Celaeno stores corrected dates).
 2. **Desk bench:** second ESP32 flashed as *Electra-on-a-wire* — replays
    plausible Forester CAN traffic so the black box develops entirely on the
    desk, mirroring how Alcyone developed against Electra.
-3. **Car recon:** listen-only on the real bus via the Y-splitter; log raw
+3. **Car recon:** listen-only on the real bus via the Y-splitter — hearing
+   without participating while we're still learning what's there. Log raw
    frames, diff against opendbc, find the MIL frame and the gate-latch frame.
 4. **Live black box:** trigger on real MIL edges; BLE sync into Celaeno.
 

@@ -5,8 +5,9 @@ The project's founding grievance, written down as an engineering problem.*
 
 **Principle:** every alert in this system gets on/off, volume, and sound —
 including the factory ones, once we can reach them. Default passthrough is a
-choice, not a constraint. What follows is an honest map of what each route
-costs, not an argument against any of them.
+choice, not a constraint. What follows maps what each route *costs*; none of
+them are off-limits. Merope may transmit anything, including state frames —
+that's an owner's decision, and it's already made.
 
 ## Where the chimes come from
 
@@ -125,8 +126,8 @@ body integrated unit. With the right DIDs we could flip them from Merope.
 
 - **Covers:** whatever SSM covers, without the dealer.
 - **Cost:** finding the DIDs (sniff an SSM session, or community reverse
-  engineering), plus a TX path — Merope becomes a bus writer, which is a
-  deliberate departure from listen-only and needs its own design pass.
+  engineering), plus a TX path — Merope transmitting is planned anyway
+  (SHED-93/94), so this rides on that rather than needing its own permission.
 - **Risk:** worse than "the beep is wrong." These modules also hold odometer
   values (written redundantly across cluster/ECM/body unit for cross-checked
   fraud detection) and participate in the immobilizer chain. A bad DID/value
@@ -169,18 +170,22 @@ Two flavors:
   data (odometer). Practice on a junkyard cluster first — a $60 mistake
   instead of a consequential one.
 
-### 4. Gateway spoofing — the one I'd argue against on engineering grounds
+### 4. Gateway spoofing — available, with the messiest blast radius
 
 Transmit CAN frames asserting "gate closed" so the cluster never chimes.
 
 - **Covers:** whatever state-driven chimes we can convincingly fake.
 - **Cost:** TX onto a live bus, contending with the real sender.
-- **Risk:** this is the route with the worst failure modes, and not because
-  of the chime. Every other module listening to that frame gets the lie too —
-  and on a Global Platform car, gate state plausibly touches the power
-  liftgate logic, interior lighting, security, and possibly the ADAS state
-  machine. You'd be debugging emergent weirdness in unrelated systems. Route
-  3 gets the same outcome by cutting one wire that nothing else listens to.
+- **Risk:** the widest blast radius of the four, and not because of the
+  chime. Every other module listening to that frame gets the asserted state
+  too — on a Global Platform car, gate state plausibly touches power liftgate
+  logic, interior lighting, security, possibly the ADAS state machine. Expect
+  to debug effects in systems you weren't aiming at. Merope's full-bus
+  recording makes that tractable rather than mysterious.
+- **Why route 3 is still usually the better buy for chimes specifically:** it
+  reaches the same outcome by cutting one wire nothing else listens to. But
+  spoofing is on the table whenever it's the right tool — e.g. signals with
+  no physical intercept point.
 
 ## The chosen path: route 3, staged
 
