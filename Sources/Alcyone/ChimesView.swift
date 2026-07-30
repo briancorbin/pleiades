@@ -13,6 +13,7 @@ public struct ChimesView: View {
     let store: ChimePolicyStore
 
     @State private var policies: [String: ChimePolicy] = [:]
+    @State private var installed: Set<InterceptionPoint> = []
     @State private var editing: Chime?
     @AppStorage("alcyone.haulingMode") private var haulingMode = false
 
@@ -54,6 +55,7 @@ public struct ChimesView: View {
     private func refresh() async {
         let all = await store.all()
         policies = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
+        installed = await store.installedPoints()
     }
 
     private var header: some View {
@@ -72,30 +74,64 @@ public struct ChimesView: View {
         }
     }
 
-    /// Honest about the gap between intent and hardware: policies are
-    /// recorded now, enforced when the interception board exists.
+    /// Which interception hardware is actually installed. A policy can be
+    /// set before the hardware exists; whether it's *enforced* is a separate
+    /// fact, and pretending otherwise would be the one thing worse than not
+    /// having the feature.
     private var capabilityCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "wrench.and.screwdriver")
                     .foregroundStyle(Theme.copper)
-                Text("POLICIES RECORDED, NOT YET ENFORCED")
+                Text("INTERCEPTION HARDWARE")
                     .font(.system(size: 10, weight: .bold))
                     .tracking(1.2)
                     .foregroundStyle(Theme.copper)
                 Spacer()
+                Text(installed.isEmpty ? "none installed" : "\(installed.count) installed")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(installed.isEmpty ? Theme.textDim : Theme.copper)
             }
-            Text("""
-            These chimes are generated inside the car — mostly by the \
-            instrument cluster, which no CAN message can reach. Enforcing a \
-            policy needs the speaker interception board (SHED-79). Set what \
-            you want now; it takes effect when the hardware lands.
-            """)
-            .font(.system(size: 11))
-            .foregroundStyle(Theme.textDim)
+            ForEach(InterceptionPoint.allCases, id: \.self) { point in
+                Toggle(isOn: binding(for: point)) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(point.displayName)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.text)
+                        Text(pointDetail(point))
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.textDim)
+                    }
+                }
+                .tint(Theme.copper)
+            }
+            if installed.isEmpty {
+                Text("Nothing is installed yet, so policies below are recorded but not enforced. Set what you want now — it takes effect when the hardware lands.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textDim)
+            }
         }
         .padding(14)
         .background(Theme.copper.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func pointDetail(_ point: InterceptionPoint) -> String {
+        switch point {
+        case .inputDiscrete: return "Relays on discrete signal wires (SHED-95)"
+        case .inputCAN: return "Transparent CAN gateway — rewrite in transit (SHED-95)"
+        case .output: return "Cluster speaker tap — mute and substitute (SHED-79)"
+        }
+    }
+
+    private func binding(for point: InterceptionPoint) -> Binding<Bool> {
+        Binding(
+            get: { installed.contains(point) },
+            set: { on in
+                if on { installed.insert(point) } else { installed.remove(point) }
+                let snapshot = installed
+                Task { await store.setInstalled(snapshot) }
+            }
+        )
     }
 
     private var haulingCard: some View {
@@ -157,12 +193,16 @@ public struct ChimesView: View {
                     .foregroundStyle(Theme.textDim)
             }
             HStack(spacing: 6) {
-                Image(systemName: "link")
+                Image(systemName: enforced(chime, policy) ? "checkmark.circle.fill" : "clock")
                     .font(.system(size: 9))
-                Text(chime.reach.describedReach)
+                Text(enforced(chime, policy)
+                     ? policy.action.effect
+                     : (policy.action == .passthrough
+                        ? chime.reach.describedReach
+                        : "not enforced — needs \(neededHardware(chime, policy))"))
                     .font(.system(size: 10))
             }
-            .foregroundStyle(Theme.textDim)
+            .foregroundStyle(enforced(chime, policy) ? Theme.copper : Theme.textDim)
         }
         .padding(14)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
@@ -179,9 +219,23 @@ public struct ChimesView: View {
         return chime.id == "seatbelt" ? value < 0.5 : value > 0.5
     }
 
+    /// A policy only does something if the hardware it needs is installed
+    /// *and* this chime can be reached that way.
+    private func enforced(_ chime: Chime, _ policy: ChimePolicy) -> Bool {
+        guard policy.action != .passthrough else { return false }
+        let usable = chime.points.intersection(installed)
+        return !policy.action.requiredPoints.isDisjoint(with: usable)
+    }
+
+    private func neededHardware(_ chime: Chime, _ policy: ChimePolicy) -> String {
+        let candidates = policy.action.requiredPoints.intersection(chime.points)
+        return candidates.map(\.displayName).sorted().joined(separator: " or ")
+    }
+
     private func iconName(_ action: ChimeAction) -> String {
         switch action {
         case .passthrough: return "speaker.wave.2"
+        case .prevent: return "hand.raised.fill"
         case .quieter: return "speaker.wave.1"
         case .muted: return "speaker.slash"
         case .replaced: return "waveform"
@@ -220,12 +274,20 @@ struct ChimeEditorView: View {
                     .tracking(1.2)
                     .foregroundStyle(Theme.textDim)
                 Picker("", selection: $policy.action) {
-                    ForEach(ChimeAction.allCases, id: \.self) { action in
+                    ForEach(chime.availableActions(), id: \.self) { action in
                         Text(action.displayName).tag(action)
                     }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                Text(policy.action.effect)
+                    .font(.system(size: 11))
+                    .foregroundStyle(policy.action == .prevent ? Theme.copper : Theme.textDim)
+                if !chime.points.contains(where: { $0.isInput }) {
+                    Text("This chime has no input we can reach, so it can only be handled at the speaker.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.textDim)
+                }
             }
 
             if policy.action == .replaced {

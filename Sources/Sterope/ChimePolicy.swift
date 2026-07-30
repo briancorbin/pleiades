@@ -31,17 +31,30 @@ public struct Chime: Sendable, Identifiable, Hashable {
     public let name: String
     public let detail: String
     public let reach: Reach
+    /// Where this particular chime can be intercepted. Not every chime has
+    /// an input we can reach — a turn-signal tick is synthesized entirely
+    /// inside the cluster from a stalk switch we may not tap.
+    public let points: Set<InterceptionPoint>
     /// The CAN signal that triggers it, when we can see one. Lets the
     /// interception board know *which* chime is playing.
     public let signal: ProprietarySignalRef?
 
     public init(id: String, name: String, detail: String, reach: Reach,
+                points: Set<InterceptionPoint> = [.output],
                 signal: ProprietarySignalRef? = nil) {
         self.id = id
         self.name = name
         self.detail = detail
         self.reach = reach
+        self.points = points
         self.signal = signal
+    }
+
+    /// Actions this chime could support, given hardware.
+    public func availableActions() -> [ChimeAction] {
+        ChimeAction.allCases.filter { action in
+            action == .passthrough || !action.requiredPoints.isDisjoint(with: points)
+        }
     }
 }
 
@@ -51,23 +64,67 @@ public struct ProprietarySignalRef: Sendable, Hashable {
     public init(id: UInt16) { self.id = id }
 }
 
+/// Where we can get between the car and itself. Different points give
+/// genuinely different outcomes, which is why the action list depends on them.
+public enum InterceptionPoint: String, Sendable, Codable, Hashable, CaseIterable {
+    /// A discrete wire feeding the module — one relay per signal.
+    case inputDiscrete
+    /// A CAN-carried signal, rewritten in transit by a transparent gateway.
+    case inputCAN
+    /// The module's speaker feed.
+    case output
+
+    public var displayName: String {
+        switch self {
+        case .inputDiscrete: return "Input (wire)"
+        case .inputCAN: return "Input (CAN gateway)"
+        case .output: return "Speaker tap"
+        }
+    }
+
+    public var isInput: Bool { self != .output }
+}
+
 /// What we do when a chime fires.
 public enum ChimeAction: String, Sendable, Codable, CaseIterable {
     /// Leave the car alone. The honest default until hardware exists.
     case passthrough
-    /// Attenuate the factory tone.
+    /// Rewrite the input so the module never decides to warn at all —
+    /// no chime *and* no telltale. Needs an input interception point.
+    case prevent
+    /// Attenuate the factory tone. Output side; the telltale still lights.
     case quieter
-    /// Suppress it entirely.
+    /// Suppress the sound. Output side; the telltale still lights.
     case muted
-    /// Suppress it and play our own sound instead.
+    /// Suppress it and play our own sound instead. Output side.
     case replaced
 
     public var displayName: String {
         switch self {
         case .passthrough: return "Pass through"
+        case .prevent: return "Prevent"
         case .quieter: return "Quieter"
         case .muted: return "Muted"
         case .replaced: return "Replace"
+        }
+    }
+
+    /// The distinction that matters in practice.
+    public var effect: String {
+        switch self {
+        case .passthrough: return "Stock behavior."
+        case .prevent: return "The module never decides to warn — no sound and no dash light."
+        case .quieter: return "Factory tone, attenuated. Dash light still shows."
+        case .muted: return "Silent, but the dash light still shows."
+        case .replaced: return "Factory tone silenced, your sound plays instead. Dash light still shows."
+        }
+    }
+
+    public var requiredPoints: Set<InterceptionPoint> {
+        switch self {
+        case .passthrough: return []
+        case .prevent: return [.inputDiscrete, .inputCAN]  // either will do
+        case .quieter, .muted, .replaced: return [.output]
         }
     }
 }
@@ -93,32 +150,39 @@ public extension Chime {
     static let foresterChimes: [Chime] = [
         Chime(id: "gate", name: "Rear gate ajar",
               detail: "The one that started this project. Fires continuously while driving with the gate open.",
-              reach: .clusterTap, signal: ProprietarySignalRef(id: 0x100)),
+              reach: .clusterTap, points: [.inputCAN, .output],
+              signal: ProprietarySignalRef(id: 0x100)),
         Chime(id: "seatbelt", name: "Seatbelt reminder",
               detail: "Escalates with speed and time. No factory setting exists for it.",
-              reach: .clusterTap, signal: ProprietarySignalRef(id: 0x110)),
+              reach: .clusterTap, points: [.inputDiscrete, .inputCAN, .output],
+              signal: ProprietarySignalRef(id: 0x110)),
         Chime(id: "door", name: "Door ajar",
               detail: "Door open with the ignition on.",
-              reach: .clusterTap, signal: ProprietarySignalRef(id: 0x101)),
+              reach: .clusterTap, points: [.inputCAN, .output],
+              signal: ProprietarySignalRef(id: 0x101)),
         Chime(id: "turnsignal", name: "Turn signal tick",
-              detail: "Synthesized by the cluster, not a physical relay.",
-              reach: .clusterTap),
+              detail: "Synthesized by the cluster from the stalk switch — no input we can reach.",
+              reach: .clusterTap, points: [.output]),
         Chime(id: "eyesight", name: "EyeSight / pre-collision",
               detail: "Routed through the head unit and the cluster on the 2022.",
-              reach: .headUnit),
+              reach: .headUnit, points: [.output]),
         Chime(id: "reverse", name: "Reverse / park sensors",
               detail: "Body unit through the rear speaker.",
-              reach: .headUnit),
+              reach: .headUnit, points: [.output]),
         Chime(id: "keyless", name: "Keyless entry beep",
               detail: "Separate buzzer. Seven volume levels including off, via dealer settings.",
-              reach: .bodySetting),
+              reach: .bodySetting, points: [.output]),
     ]
 }
 
-/// JSON-file-backed chime policies, one per chime.
+/// JSON-file-backed chime policies, one per chime, plus which interception
+/// hardware is actually installed. A policy can be *set* before the hardware
+/// exists; whether it's *enforced* is a separate fact and the UI says so.
 public actor ChimePolicyStore {
     private let fileURL: URL
+    private let hardwareURL: URL
     private var policies: [String: ChimePolicy]
+    private var installed: Set<InterceptionPoint>
 
     public init(directory: URL? = nil) {
         let base = directory ?? FileManager.default
@@ -126,12 +190,28 @@ public actor ChimePolicyStore {
             .appendingPathComponent("pleiades", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         fileURL = base.appendingPathComponent("chime-policies.json")
+        hardwareURL = base.appendingPathComponent("chime-hardware.json")
         if let data = try? Data(contentsOf: fileURL),
            let loaded = try? JSONDecoder().decode([String: ChimePolicy].self, from: data) {
             policies = loaded
         } else {
             policies = [:]
         }
+        if let data = try? Data(contentsOf: hardwareURL),
+           let loaded = try? JSONDecoder().decode(Set<InterceptionPoint>.self, from: data) {
+            installed = loaded
+        } else {
+            installed = []
+        }
+    }
+
+    public func installedPoints() -> Set<InterceptionPoint> { installed }
+
+    public func setInstalled(_ points: Set<InterceptionPoint>) {
+        installed = points
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try? encoder.encode(installed).write(to: hardwareURL, options: .atomic)
     }
 
     /// Every chime, with its stored policy or a passthrough default.

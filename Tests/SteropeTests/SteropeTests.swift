@@ -227,3 +227,41 @@ final class ChimePolicyTests: XCTestCase {
         XCTAssertTrue(ids.contains("tpms.fl"))
     }
 }
+
+final class InterceptionPointTests: XCTestCase {
+    func testPreventNeedsAnInputPoint() {
+        XCTAssertTrue(ChimeAction.prevent.requiredPoints.allSatisfy(\.isInput))
+        XCTAssertEqual(ChimeAction.muted.requiredPoints, [.output])
+    }
+
+    func testTurnSignalCannotBePrevented() {
+        // Synthesized inside the cluster from a stalk switch we can't reach —
+        // the speaker is the only way at it.
+        let turn = Chime.foresterChimes.first { $0.id == "turnsignal" }!
+        XCTAssertFalse(turn.availableActions().contains(.prevent))
+        XCTAssertTrue(turn.availableActions().contains(.muted))
+    }
+
+    func testGateCanBePreventedViaTheCANGateway() {
+        let gate = Chime.foresterChimes.first { $0.id == "gate" }!
+        XCTAssertTrue(gate.points.contains(.inputCAN))
+        XCTAssertTrue(gate.availableActions().contains(.prevent))
+    }
+
+    func testPassthroughIsAlwaysAvailable() {
+        for chime in Chime.foresterChimes {
+            XCTAssertTrue(chime.availableActions().contains(.passthrough), chime.id)
+        }
+    }
+
+    func testInstalledHardwarePersists() async {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("chime-hw-\(UUID().uuidString)", isDirectory: true)
+        let store = ChimePolicyStore(directory: dir)
+        XCTAssertTrue(await store.installedPoints().isEmpty)
+        await store.setInstalled([.output])
+
+        let reloaded = ChimePolicyStore(directory: dir)
+        XCTAssertEqual(await reloaded.installedPoints(), [.output])
+    }
+}
