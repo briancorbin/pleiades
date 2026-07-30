@@ -114,3 +114,30 @@ onboard RGB LED (GPIO48):
   flowing, red = capturing a fault window)
 
 Colors match their Linear labels.
+
+
+## Car install (for later — this doc is the desk bench)
+
+```
+Car OBD-II port
+   └─ Y-splitter (1 male → 2 female)
+        ├─ Leg A → Vgate dongle          participant: asks the ECU questions
+        └─ Leg B → OBD male pigtail      eavesdropper: hears the bus
+              pin 6  CAN-H → transceiver CANH
+              pin 14 CAN-L → transceiver CANL
+              pin 16 +12 V → [1–2 A fuse] → buck 12→5 V → ESP32 `5Vin`
+              pin 4/5 GND  → buck ground + system ground
+```
+
+Three differences from the desk bench:
+
+1. **Desolder the transceiver's 120 Ω termination.** The vehicle bus is
+   already terminated at both ends; a third resistor loads it. On the desk we
+   want both terminators — in the car, none from us.
+2. **Fuse pin 16.** Always-hot battery, unswitched.
+3. **Power via `5Vin`**, not `3V3` — the buck feeds 5 V and the board's
+   regulator makes 3.3 V for itself and the transceiver.
+
+Stage it: recon first with Merope still on the breadboard powered by a USB
+battery pack, splicing CAN-H/L only and never touching pin 16 (SHED-72).
+Permanent 12 V install only after the data is proven to be there (SHED-73).

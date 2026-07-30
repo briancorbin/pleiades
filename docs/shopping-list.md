@@ -34,6 +34,14 @@ Check things off as they land.*
 
 ## Alcyone lives in the cabin (~$25–45)
 
+- [ ] **OBD-II male pigtail** with flying leads (~$8) — **required**, not
+  optional: the Y-splitter gives two *female* sockets, so Merope needs a male
+  connector to tap pins 6/14 (CAN-H/L), 16 (+12 V) and 4/5 (GND)
+- [ ] **USB battery pack** — powers Merope during recon so stage 1 never
+  touches the car's 12 V (probably already own one)
+
+## Alcyone lives in the cabin (~$25–45) — continued
+
 - [ ] **iPad mount** (~$25–40) — dash or CD-slot style for the Forester; pick
   after deciding where the iPad rides
 - [ ] USB-C cable long enough to reach the car's power — probably owned
