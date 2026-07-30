@@ -34,12 +34,16 @@ Two ESP32-S3 boards, two SN65HVD230 transceivers, one two-node CAN bus.
 
 ## Per board — 4 wires, identical on both
 
-| ESP32-S3 pin | → | Waveshare pin | Also labeled |
-|---|---|---|---|
-| `3V3` | → | `3.3V` | `VCC` |
-| `GND` | → | `GND` | |
-| `5` (TWAI TX) | → | `CTX` | `CAN_TX`, `D`, `TXD` |
-| `4` (TWAI RX) | → | `CRX` | `CAN_RX`, `R`, `RXD` |
+These modules (VP230 / SN65HVD230) silkscreen their header, left to right:
+`3.3V | GND | CAN RX | CAN TX` — **note RX comes before TX**, which is
+backwards from how most people wire left-to-right.
+
+| ESP32-S3 pin | → | Module pin |
+|---|---|---|
+| `3V3` | → | `3.3V` |
+| `GND` | → | `GND` |
+| `5` (TWAI TX) | → | `CAN TX` |
+| `4` (TWAI RX) | → | `CAN RX` |
 
 Nothing about this differs between the two boards — they're wired the same;
 only the flashed firmware differs.
@@ -58,6 +62,16 @@ differential — both nodes need a shared voltage reference.
 Termination is already on both Waveshare boards (120 Ω each), which is
 exactly the two-terminator topology a bus wants. Add nothing.
 
+## Use solid-core wire
+
+**Crimped dupont jumpers were the entire problem during first bring-up.** They
+read as connected, look seated, and intermittently conduct nothing. Hours went
+into inspecting correct wiring and theorizing about mode pins and power rails
+while a jumper quietly did nothing.
+
+Cut 22 AWG solid core (~7 mm strip). If a signal looks dead and the wiring is
+provably right, replace the wire before believing any other theory.
+
 ## Verify before debugging software
 
 1. **Power at each transceiver.** Multimeter across its `3.3V` and `GND`
@@ -67,6 +81,11 @@ exactly the two-terminator topology a bus wants. Add nothing.
 2. **Continuity `CANH`↔`CANH` and `CANL`↔`CANL`** between boards.
 3. **Both LEDs lit** — amber and violet. A dark LED means that board isn't
    running its firmware (tap `RST`).
+4. **Run the self-test first, per board.** `pio run -e selftest -t upload
+   --upload-port <port>` checks power and both signal wires with no CAN
+   protocol, no second board, and no bus wires. Green LED = that half is
+   good. Doing this *before* wiring the bus turns a confusing two-board
+   problem into two trivial one-board ones.
 
 ## Reading the failure
 
