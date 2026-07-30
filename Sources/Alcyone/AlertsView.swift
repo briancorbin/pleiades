@@ -216,6 +216,8 @@ struct RuleEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    @State private var pickingSignal = false
+
     private var isBooleanSignal: Bool {
         SignalRef.resolve(rule.signalID)?.isBoolean ?? false
     }
@@ -236,20 +238,22 @@ struct RuleEditorView: View {
                     .textFieldStyle(.roundedBorder)
             }
             labeledRow("Signal") {
-                Picker("", selection: $rule.signalID) {
-                    Section("Standard PIDs") {
-                        ForEach(PID.all, id: \.code) { pid in
-                            Text("\(pid.name) (\(pid.unit))").tag(UInt16(pid.code))
-                        }
+                Button {
+                    pickingSignal = true
+                } label: {
+                    HStack {
+                        Text(SignalRef.resolve(rule.signalID)?.name ?? "Choose…")
+                            .foregroundStyle(Theme.text)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textDim)
                     }
-                    Section("CAN tap only") {
-                        ForEach(ProprietarySignal.all, id: \.id) { signal in
-                            Text(signal.unit.isEmpty ? signal.name : "\(signal.name) (\(signal.unit))")
-                                .tag(signal.id)
-                        }
-                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 8))
                 }
-                .labelsHidden()
+                .buttonStyle(.plain)
             }
             labeledRow(isBooleanSignal ? "Alert when" : "Trigger") {
                 Picker("", selection: $rule.kind) {
@@ -288,6 +292,8 @@ struct RuleEditorView: View {
                             Text(sound.displayName).tag(sound)
                         }
                     }
+                    .pickerStyle(.menu)
+                    .tint(Theme.copper)
                     .labelsHidden()
                     Button {
                         model.preview(rule.sound, volume: rule.volume)
@@ -339,6 +345,9 @@ struct RuleEditorView: View {
         .frame(minWidth: 420, minHeight: 380)
         .background(Theme.background)
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $pickingSignal) {
+            SignalPickerView(selection: $rule.signalID)
+        }
     }
 
     private func labeledRow(_ label: String, @ViewBuilder content: () -> some View) -> some View {
@@ -349,5 +358,103 @@ struct RuleEditorView: View {
                 .foregroundStyle(Theme.textDim)
             content()
         }
+    }
+}
+
+
+/// Picking from ~36 signals wants a searchable list, not a wheel — a wheel
+/// with this many entries fights the user and snaps back.
+struct SignalPickerView: View {
+    @Binding var selection: UInt16
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var pids: [PID] {
+        PID.all.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    private var proprietary: [ProprietarySignal] {
+        ProprietarySignal.all.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("CHOOSE SIGNAL")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(2)
+                    .foregroundStyle(Theme.textDim)
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.copper)
+            }
+            .padding(.bottom, 12)
+
+            TextField("", text: $query, prompt: Text("Search signals"))
+                .textFieldStyle(.roundedBorder)
+                .padding(.bottom, 12)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    if !pids.isEmpty {
+                        sectionHeader("STANDARD PIDS")
+                        ForEach(pids, id: \.code) { pid in
+                            row(id: UInt16(pid.code), name: pid.name, unit: pid.unit)
+                        }
+                    }
+                    if !proprietary.isEmpty {
+                        sectionHeader("CAN TAP ONLY")
+                        ForEach(proprietary, id: \.id) { signal in
+                            row(id: signal.id, name: signal.name, unit: signal.unit)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 380, minHeight: 460)
+        .background(Theme.background)
+        .preferredColorScheme(.dark)
+    }
+
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold))
+            .tracking(1.2)
+            .foregroundStyle(Theme.copper)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+    }
+
+    private func row(id: UInt16, name: String, unit: String) -> some View {
+        let chosen = selection == id
+        return Button {
+            selection = id
+            dismiss()
+        } label: {
+            HStack {
+                Text(name)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.text)
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textDim)
+                }
+                Spacer()
+                if chosen {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.copper)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(chosen ? Theme.copper.opacity(0.12) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
