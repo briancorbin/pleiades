@@ -11,9 +11,17 @@ Check things off as they land.*
 
 ## Phase 1 — Alcyone meets the real car (~$35)
 
-- [x] **Vgate iCar Pro BLE 4.0** (~$35) — the iOS-compatible dongle. This is the
-  gate for the real FB25 PID map, the CoreBluetooth transport, and live gauges
-  in the driveway. Nothing else substitutes (iPads can't do BT-Classic).
+- [x] **Vgate iCar Pro BLE 4.0** (~$35) — the iOS-compatible dongle. Gets the
+  real FB25 PID map and live gauges in the driveway. **Post-SHED-93 note:** it
+  is no longer an install component — Merope becomes the single in-car
+  gateway. Keep the dongle as a known-good reference for validating Merope's
+  request/response against something proven.
+
+## For the single-gateway end state (SHED-93/94)
+
+**Transmitting needs no new hardware** — it's `TWAI_MODE_LISTEN_ONLY` →
+`TWAI_MODE_NORMAL`. The transceiver's driver stage is already there. What's
+listed below is for the *car install*, not for TX.
 
 ## Merope desk bench — ✅ fully covered
 
@@ -30,7 +38,14 @@ Check things off as they land.*
   pin 16 is always-hot battery
 - [x] **Small project box** (~$8) + 3M Dual Lock / velcro + zip ties — behind
   the dash trim, invisible from the cabin (Merope is the star that hides)
-- [x] Hookup wire + heat shrink — existing stash
+- [ ] **22 AWG *stranded* wire** (~$10) — for anything that lives in the car.
+  Solid core is right for a breadboard and wrong in a vehicle: engine
+  vibration work-hardens solid conductors until they crack, months later,
+  presenting as an intermittent fault. Stranded for the harness.
+- [ ] Heat shrink + a little wire loom, if the bin is low
+- [ ] **Desoldering wick** (~$5) — to lift the 120 Ω termination off the
+  car-side transceiver. Check the board first; some VP230s put termination on
+  a solder jumper and it's free.
 
 ## Alcyone lives in the cabin (~$25–45)
 
@@ -53,8 +68,9 @@ Check things off as they land.*
 - [ ] Aftermarket **oil-pressure sender** — the one number no tap can conjure
   (the FB25 only has a switch); a Sterope-era decision, needs a mechanical
   install at the oil galley
-- [ ] Second OBD male pigtail (~$8) — bench-testing the Y-splitter wiring
-  without the car
+- [ ] **Cheap 8-channel logic analyzer** (~$15) — optional, but pays for
+  itself the first time you need to see whether bits are actually leaving a
+  pin (see the 2026-07-30 bring-up)
 
 ## Assumed on hand
 
