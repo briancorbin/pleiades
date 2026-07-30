@@ -14,11 +14,8 @@ public enum TelemetrySourceKind: String, CaseIterable, Sendable {
         }
     }
 
-    /// The dongle option needs CoreBluetooth permission plumbing that only
-    /// the iOS shell has (usage string in Info.plist); the macOS bench
-    /// stays Electra-only for now.
     public static var available: [TelemetrySourceKind] {
-        #if os(iOS)
+        #if canImport(CoreBluetooth)
         return [.electra, .dongle]
         #else
         return [.electra]
@@ -38,7 +35,7 @@ public struct SourceHostView: View {
         _selection = selection
         self.ruleStore = ruleStore
 
-        #if os(iOS)
+        #if canImport(CoreBluetooth)
         if kind == .dongle {
             let source = DongleSource()
             source.connect()

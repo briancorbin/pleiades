@@ -2,10 +2,12 @@ import Foundation
 import Electra
 import Maia
 
-/// Phase-0 bench tool.
+/// Bench and first-contact tool.
 ///
 ///     pleiades demo [seconds]      # drive the Electra fake car (default 30s)
-///     pleiades bench [host[:port]] # poll a real WiFi dongle (default 192.168.0.10:35000)
+///     pleiades ble [--name X]      # probe a BLE dongle: connect, PID map, sample
+///     pleiades ble --scan          # just list nearby BLE devices
+///     pleiades bench [host[:port]] # poll a WiFi dongle (default 192.168.0.10:35000)
 @main
 struct Pleiades {
     static let watchlist: [PID] = [
@@ -13,6 +15,10 @@ struct Pleiades {
     ]
 
     static func main() async {
+        // Unbuffered: this tool narrates long-running work, and block
+        // buffering would hide everything until exit (or forever, if the
+        // user ctrl-Cs a scan that appeared to be doing nothing).
+        setvbuf(stdout, nil, _IONBF, 0)
         let args = Array(CommandLine.arguments.dropFirst())
         do {
             switch args.first ?? "demo" {
@@ -20,8 +26,24 @@ struct Pleiades {
                 try await demo(seconds: args.dropFirst().first.flatMap { Int($0) } ?? 30)
             case "bench":
                 try await bench(endpoint: args.dropFirst().first ?? "192.168.0.10:35000")
+            case "ble":
+                #if canImport(CoreBluetooth)
+                let rest = Array(args.dropFirst())
+                let scanOnly = rest.contains("--scan")
+                let nameHint = rest.firstIndex(of: "--name").map { rest[rest.index(after: $0)] }
+                try await BLEProbe.run(nameHint: nameHint, scanOnly: scanOnly)
+                #else
+                print("BLE requires CoreBluetooth (macOS/iOS).")
+                exit(2)
+                #endif
             default:
-                print("usage: pleiades demo [seconds] | pleiades bench [host[:port]]")
+                print("""
+                usage:
+                  pleiades demo [seconds]       drive the Electra fake car
+                  pleiades ble [--name X]       probe a BLE dongle
+                  pleiades ble --scan           list nearby BLE devices
+                  pleiades bench [host[:port]]  poll a WiFi dongle
+                """)
                 exit(2)
             }
         } catch {

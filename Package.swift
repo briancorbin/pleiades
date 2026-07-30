@@ -22,7 +22,13 @@ let package = Package(
         .target(name: "Sterope", dependencies: ["Maia"]),
         .target(name: "Celaeno"),
         .target(name: "Alcyone", dependencies: ["Maia", "Electra", "Sterope", "Celaeno"]),
-        .executableTarget(name: "PleiadesCLI", dependencies: ["Maia", "Electra"]),
+        // Info.plist is embedded at link time by scripts/ble-probe.sh, not
+        // bundled as a resource — see that script for why.
+        .executableTarget(
+            name: "PleiadesCLI",
+            dependencies: ["Maia", "Electra"],
+            exclude: ["Info.plist"]
+        ),
         .executableTarget(name: "AlcyoneApp", dependencies: ["Alcyone"]),
         .testTarget(name: "MaiaTests", dependencies: ["Maia"]),
         .testTarget(name: "ElectraTests", dependencies: ["Electra", "Maia"]),
