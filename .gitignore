@@ -5,3 +5,4 @@
 xcuserdata/
 *.xcodeproj
 logs/
+SESSION_HANDOFF_*.md
