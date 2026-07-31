@@ -125,6 +125,55 @@ final class DIDReplyTests: XCTestCase {
     }
 }
 
+/// Replayed from `logs/recon-20260730-180734.log` — the frames Merope
+/// actually heard on the car when the app asked for identifier 0x0100.
+/// Fourteen body modules answered alongside the ECM; the dongle's receive
+/// filter discarded all fourteen, which is why the first sweep found nothing.
+/// If a change to the parser ever drops these again, this fails.
+final class RealCarReplyTests: XCTestCase {
+    private let capture = """
+    7E8 07 62 01 00 F7 C1 7F D1
+    78F 07 62 01 00 00 01 EB D1
+    77E 07 62 01 00 00 01 E9 C1
+    7B8 07 62 01 00 00 01 E9 51
+    71F 07 62 01 00 00 01 E9 51
+    74A 07 62 01 00 00 00 E0 50
+    78B 07 62 01 00 00 00 00 00
+    788 07 62 01 00 00 01 EB 51
+    78E 07 62 01 00 FF C1 FF F1
+    7BC 07 62 01 00 00 01 F9 D1
+    7C9 07 62 01 00 00 01 F9 D1
+    74B 07 62 01 00 00 00 E0 50
+    75B 07 62 01 00 00 00 E1 41
+    75A 07 62 01 00 00 01 F9 51
+    7DD 07 62 01 00 00 01 F9 51
+    """
+
+    func testEveryModuleIsHeardSeparately() {
+        let replies = DIDScan.replies(to: 0x0100, in: capture)
+        XCTAssertEqual(replies.count, 15)
+        XCTAssertEqual(Set(replies.map(\.module)).count, 15)
+        XCTAssertTrue(replies.allSatisfy(\.isPositive))
+    }
+
+    func testModulesAnsweringTheSameIdentifierKeepTheirOwnData() {
+        let replies = DIDScan.replies(to: 0x0100, in: capture)
+        func data(_ module: UInt32) -> [UInt8]? { replies.first { $0.module == module }?.data }
+        // The engine and the body modules disagree about 0x0100 — which is
+        // the entire point of keeping the header.
+        XCTAssertEqual(data(0x7E8), [0xF7, 0xC1, 0x7F, 0xD1])
+        XCTAssertEqual(data(0x74A), [0x00, 0x00, 0xE0, 0x50])
+        XCTAssertEqual(data(0x78E), [0xFF, 0xC1, 0xFF, 0xF1])
+    }
+
+    func testTrailingPaddingIsNotMistakenForPayload() {
+        // 78B answers all zeros; the PCI still says 7 bytes, so the payload
+        // is four zeros and not an empty reply.
+        let replies = DIDScan.replies(to: 0x0100, in: capture)
+        XCTAssertEqual(replies.first { $0.module == 0x78B }?.data, [0x00, 0x00, 0x00, 0x00])
+    }
+}
+
 final class DIDSnapshotTests: XCTestCase {
     private func reply(_ module: UInt32, _ did: UInt16, _ data: [UInt8]?) -> DIDReply {
         DIDReply(module: module, did: did, data: data, negativeCode: data == nil ? 0x31 : nil)

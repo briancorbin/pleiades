@@ -42,6 +42,43 @@ across all of them.
 What we don't have is the *meaning* of any identifier. Subaru publishes none
 of this. There is no table to look up.
 
+## The trap: the adapter is deaf to most of the car
+
+The first sweep of `0x0100–0x01FF` came back with answers from exactly one
+module — the ECM at `0x7E8`, mostly `FF` placeholders. Nothing moved when the
+gate opened, because the gate was never asked.
+
+**In protocol 6 an ELM327's CAN receive filter accepts only `0x7E8–0x7EF`**,
+the response window the emissions standard reserves. Every module that knows
+about latches lives outside it. They answer; the dongle discards the answers
+in hardware before any software sees them.
+
+We know they answer because Merope watched them do it. From the recon log,
+one functional request and fifteen replies:
+
+```
+0x7DF   03 22 01 01 ...            the request going out
+0x7E8   04 62 01 01 FF             the ECM  — the only one the dongle showed
+0x74A   07 62 01 00 00 00 E0 50    a body module answering the same request
+0x78E   07 62 01 00 FF C1 FF F1    another, with different data
+```
+
+Merope has no filter, which is precisely why it saw all fourteen.
+
+So the scanner widens the filter before sweeping — `ATCF 700` plus `ATCM 700`
+makes only the top three address bits significant, admitting `0x700–0x7FF` —
+and then **proves it worked** with a single-identifier preflight before
+spending two minutes on the full range. If fewer than three modules answer
+`22 0100`, it stops and says so rather than sweeping a car it can't hear.
+
+Not every clone implements those commands. One that answers `?` can't be
+widened, and the sweep has to run through Merope instead.
+
+It also pins fixed timing (`ATAT0` with an explicit `ATST`). Adaptive timing
+tunes the wait from observed response times, which is right when one ECU
+answers and wrong here — it returns as soon as the fastest module replies and
+truncates the dozen behind it.
+
 ## How you find out anyway
 
 Change one thing about the car, and watch what changes in its answers.

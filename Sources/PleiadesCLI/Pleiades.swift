@@ -51,7 +51,12 @@ struct Pleiades {
                     passes: value(of: "--passes", in: rest).flatMap { Int($0) } ?? 2,
                     tag: value(of: "--tag", in: rest),
                     compareTo: value(of: "--compare", in: rest),
-                    includeVolatile: rest.contains("--include-volatile")
+                    includeVolatile: rest.contains("--include-volatile"),
+                    // ELM327 response timeout, in units of 4 ms. 0x32 is 200 ms,
+                    // which is enough for a dozen modules to get a word in.
+                    st: value(of: "--st", in: rest) ?? "32",
+                    extendedSession: rest.contains("--extended"),
+                    force: rest.contains("--force")
                 )
                 #else
                 print("Scanning requires CoreBluetooth (macOS/iOS).")
@@ -85,6 +90,9 @@ struct Pleiades {
                       --passes 2                repeats, to flag volatile values
                       --compare <file.json>     diff target (default: last sweep)
                       --include-volatile        show values that move on their own
+                      --st 32                   adapter response timeout, ×4ms
+                      --extended                enter diagnostic session 10 03
+                      --force                   sweep even if preflight is bleak
                   pleiades compare <a> <b>      diff two stored sweeps, no car
                 """)
                 exit(2)

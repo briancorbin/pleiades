@@ -19,7 +19,10 @@ enum DIDScanner {
         passes: Int,
         tag: String?,
         compareTo: String?,
-        includeVolatile: Bool
+        includeVolatile: Bool,
+        st: String,
+        extendedSession: Bool,
+        force: Bool
     ) async throws {
         let count = Int(last) - Int(first) + 1
         guard count > 0 else {
@@ -44,12 +47,14 @@ enum DIDScanner {
         transport.connect()
         try await transport.waitUntilReady()
 
-        // Pin protocol 6 rather than let the adapter hunt for it, and turn
-        // headers on: one functional request draws answers from a dozen
-        // modules, and the header is the only thing saying which said what.
         let session = ELM327Session(transport: transport)
         try await session.initialize(pinnedProtocol: 6)
-        _ = try? await session.send("ATH1")
+        try await configure(session, st: st, extendedSession: extendedSession)
+
+        guard try await preflight(session, force: force) else {
+            transport.disconnect()
+            return
+        }
 
         var collected: [[DIDReply]] = []
         for pass in 1...passes {
@@ -91,6 +96,88 @@ enum DIDScanner {
         } catch {
             print("\nCouldn't read \(previous) to compare: \(error)")
         }
+    }
+
+    /// Set the adapter up to hear the whole car rather than just the engine.
+    ///
+    /// The first sweep of this range came back with answers from exactly one
+    /// module, and the reason is the single most important thing to know
+    /// about scanning a car through an ELM327: **in protocol 6 the adapter's
+    /// CAN receive filter accepts only 0x7E8–0x7EF**, the response window the
+    /// emissions standard reserves. Body, chassis and comfort modules live at
+    /// 0x71F, 0x74A, 0x78E and friends, outside it. They answer — Merope
+    /// watched fourteen of them answer this exact request, listening
+    /// promiscuously — and the dongle discards every one before we see it.
+    private static func configure(_ session: ELM327Session, st: String, extendedSession: Bool) async throws {
+        // Headers on: one functional request draws answers from a dozen
+        // modules, and the header is the only thing saying which said what.
+        _ = try? await session.send("ATH1")
+
+        // Fixed timing, not adaptive. Adaptive timing tunes the wait from
+        // observed response times, which is right when one ECU answers and
+        // wrong here — it would return as soon as the fastest module replies
+        // and cut off the thirteen behind it.
+        _ = try? await session.send("ATAT0")
+        _ = try? await session.send("ATST\(st)")
+
+        // Widen the receive filter to 0x700–0x7FF: mask 700 makes only the
+        // top three bits significant, filter 700 requires them set.
+        print("\nOpening the receive filter past the OBD window:")
+        let filter = (try? await session.send("ATCF700")) ?? "?"
+        let mask = (try? await session.send("ATCM700")) ?? "?"
+        print("  ATCF 700 → \(clean(filter))    ATCM 700 → \(clean(mask))")
+
+        if clean(filter).contains("?") || clean(mask).contains("?") {
+            // Some clones implement only the single-address form, which takes
+            // wildcards on later firmware.
+            let wildcard = (try? await session.send("ATCRA7XX")) ?? "?"
+            print("  fell back to ATCRA 7XX → \(clean(wildcard))")
+        }
+
+        guard extendedSession else { return }
+        // Opt-in: some identifiers only answer outside the default session.
+        // Left off by default because it changes the car's state rather than
+        // just reading it, and needs tester-present traffic to stay open.
+        let entered = (try? await session.send("1003")) ?? "?"
+        print("  extended diagnostic session (10 03) → \(clean(entered))")
+    }
+
+    /// Ask one identifier and count who answers, before committing to
+    /// hundreds of them. Two minutes is a long time to spend finding out the
+    /// adapter was deaf the whole way through.
+    private static func preflight(_ session: ELM327Session, force: Bool) async throws -> Bool {
+        print("\nPreflight — asking 22 0100 and counting who answers:")
+        let raw = (try? await session.send("220100")) ?? ""
+        for line in raw.split(whereSeparator: \.isNewline) where !clean(String(line)).isEmpty {
+            print("    \(clean(String(line)))")
+        }
+
+        let replies = DIDScan.replies(to: 0x0100, in: raw)
+        let modules = Set(replies.map(\.module)).sorted()
+        print("  \(modules.count) module\(modules.count == 1 ? "" : "s") answered: \(modules.map { String(format: "%03X", $0) }.joined(separator: " "))")
+
+        guard modules.count < 3, !force else { return true }
+
+        print("""
+
+        Stopping — that's the engine talking to itself.
+
+        Merope saw fourteen modules answer this exact request while listening
+        with no filter, so the data is there; the adapter is dropping it. If
+        the ATCF/ATCM lines above came back '?', this dongle won't widen its
+        filter, and the sweep would spend two minutes confirming it.
+
+        Options, in order of effort:
+          · Try --st 64 first — a slower module may simply be late.
+          · Run the sweep through Merope instead. It has no receive filter,
+            which is exactly how we know these modules answer at all.
+          · --force sweeps anyway if you want the ECM's own identifiers.
+        """)
+        return false
+    }
+
+    private static func clean(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// One pass over the range. Reports as it goes, because a silent two
