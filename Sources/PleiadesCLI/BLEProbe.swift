@@ -44,7 +44,10 @@ private func printPermissionHelp() {
 
 enum BLEProbe {
     static func run(nameHint: String?, scanOnly: Bool) async throws {
-        let transport = BLEELMTransport(nameHint: nameHint)
+        // The ELM's auto-protocol search on the first request routinely
+        // takes 5-15s ("SEARCHING..."), so the default 5s timeout hangs up
+        // before the car has finished answering.
+        let transport = BLEELMTransport(nameHint: nameHint, commandTimeout: 20)
 
         transport.onStateChange = { state in
             print("  [ble] \(state.describedState)")
@@ -79,6 +82,13 @@ enum BLEProbe {
         let session = ELM327Session(transport: transport)
         try await session.initialize()
 
+        // Pin the protocol instead of letting the adapter hunt: a 2022
+        // Forester is ISO 15765-4, 11-bit ids, 500 kbit/s — protocol 6.
+        // Skipping the search makes the first request answer immediately.
+        if let reply = try? await transport.send("ATSP6") {
+            print("  protocol: forced to 6 (CAN 11-bit/500k) — \(reply.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
+
         // Adapter identity — this is the one command that answers even with
         // the ignition off, so it separates "no dongle" from "no car".
         if let version = try? await transport.send("ATI") {
@@ -91,11 +101,26 @@ enum BLEProbe {
             supported = try await session.supportedPIDs()
         } catch {
             print("  ✗ \(error)")
-            print("\n  If this says NO DATA or UNABLE TO CONNECT, the adapter is fine")
-            print("  but the ECU isn't answering — turn the ignition on (engine")
-            print("  running is best) and try again.")
-            transport.disconnect()
-            return
+            print("\n  Retrying with automatic protocol detection…")
+            _ = try? await transport.send("ATSP0")
+            do {
+                supported = try await session.supportedPIDs()
+                print("  ✓ auto-detect worked")
+            } catch {
+                print("  ✗ \(error)")
+                print("")
+                print("  The adapter is fine — it answered ATI. So either the")
+                print("  ignition is off, or this port doesn't answer PID")
+                print("  requests. Check ATDP (detected protocol):")
+                if let dp = try? await transport.send("ATDP") {
+                    print("    ATDP → \(dp.trimmingCharacters(in: .whitespacesAndNewlines))")
+                }
+                if let rv = try? await transport.send("ATRV") {
+                    print("    ATRV → \(rv.trimmingCharacters(in: .whitespacesAndNewlines))  (battery voltage)")
+                }
+                transport.disconnect()
+                return
+            }
         }
 
         let inCatalog = PID.all.filter { supported.contains($0.code) }

@@ -132,8 +132,9 @@ names against sniffed traffic before trusting any of them.
 - **Oil pressure is not on the bus.** The FB25 has a low-pressure switch, not a
   sender — no amount of tapping conjures a number. Getting one means adding an
   aftermarket sender (Sterope-era decision).
-- Standard-PID coverage varies by year; **appendix A is a hypothesis until
-  phase 1 validates it** against the real car's `0100…` bitmask walk.
+- Standard-PID coverage **confirmed 2026-07-30** against the real FB25D: 57
+  standard PIDs answered. Oil temp (`5C`) is supported; fuel rate (`5E`) is
+  not. See appendix A.
 - The gate-ajar chime exists because exhaust can pull into the cabin through an
   open gate. Whatever Sterope eventually does about the chime, the CO caution
   stays in the docs. Windows cracked.
@@ -152,9 +153,37 @@ names against sniffed traffic before trusting any of them.
 - [ ] Alcyone v1 scope: gauges only, or logging + Sterope thresholds from day one?
 - [ ] Mounting: where does the iPad live in the cabin?
 
-## Appendix A — curated standard PID set (mode 01)
+## Appendix A — standard PID set (mode 01)
 
-The polling set Maia ships. Formulas are the SAE J1979 standards.
+**Verified 2026-07-30** against the actual 2022 Forester Wilderness (FB25D)
+with a Vgate iCar Pro over BLE. The ECU answers **57** standard PIDs; 20 are
+in Maia's catalog. Formulas are the SAE J1979 standards.
+
+Findings that closed open questions:
+
+- **`5C` oil temp — supported.** Good news; it was a coin flip.
+- **`5E` fuel rate — not supported.** Drop it from the default polling set.
+- 37 supported PIDs are outside Maia's catalog and worth mining, notably
+  `03` (fuel system status), `1C` (OBD standard), `2C`–`2E` (EGR/EVAP),
+  `30` (warm-ups since cleared), `34` (O2 sensor wide-range), `4C`–`4E`
+  (commanded throttle, run time with MIL, time since cleared), `5A`
+  (relative accelerator position), and the `80`+ range (manufacturer
+  extended data).
+- Adapter reports **ELM327 v2.3**, protocol 6 (ISO 15765-4, CAN 11-bit,
+  500 kbit/s). Forcing protocol 6 avoids a slow auto-search — worth doing in
+  the app's transport too.
+
+### Live sample at idle (engine warm)
+
+```
+Engine load        36.5 %      Timing advance      2.5 °BTDC
+Short fuel trim   -0.8 %       Intake air temp    52.0 °C
+Long fuel trim    -3.9 %       Manifold pressure  37.0 kPa
+RPM              903.0 rpm     Speed               0.0 km/h
+```
+
+Fuel trims within a few percent of zero — a healthy engine, and a useful
+baseline for SHED-85's fingerprinting.
 
 | PID | Name | Formula | Unit | Notes |
 |---|---|---|---|---|

@@ -124,11 +124,12 @@ public extension PID {
     static let relativeThrottle = PID(code: 0x45, name: "Relative throttle", unit: "%", byteCount: 1) {
         Double($0[0]) / 2.55
     }
-    /// Spotty across model years — gate on `supportedPIDs()`.
+    /// Confirmed supported on the 2022 FB25D (2026-07-30).
     static let oilTemp = PID(code: 0x5C, name: "Oil temp", unit: "°C", byteCount: 1) {
         Double($0[0]) - 40
     }
-    /// Spotty across model years — gate on `supportedPIDs()`.
+    /// Confirmed **not** supported on the 2022 FB25D (2026-07-30). Kept in
+    /// the catalog for other vehicles; `supportedPIDs()` gates it.
     static let fuelRate = PID(code: 0x5E, name: "Fuel rate", unit: "L/h", byteCount: 2) {
         (Double($0[0]) * 256 + Double($0[1])) / 20
     }

@@ -106,6 +106,60 @@ static void report_changes(void) {
     board_led_set(45, 34, 58);
 }
 
+// Bitrates to try, most likely first. A 2022 Forester's OBD CAN should be
+// 500k, but the port can expose other segments.
+static const struct { const char *name; twai_timing_config_t timing; } BITRATES[] = {
+    {"500 kbit/s", TWAI_TIMING_CONFIG_500KBITS()},
+    {"250 kbit/s", TWAI_TIMING_CONFIG_250KBITS()},
+    {"125 kbit/s", TWAI_TIMING_CONFIG_125KBITS()},
+    {"1 Mbit/s", TWAI_TIMING_CONFIG_1MBITS()},
+};
+#define BITRATE_COUNT (sizeof(BITRATES) / sizeof(BITRATES[0]))
+
+static int bitrate_index;
+
+static void start_bus(int index) {
+    twai_stop();
+    twai_driver_uninstall();
+    twai_general_config_t general =
+        TWAI_GENERAL_CONFIG_DEFAULT(MRP_TWAI_TX, MRP_TWAI_RX, TWAI_MODE_LISTEN_ONLY);
+    twai_timing_config_t timing = BITRATES[index].timing;
+    twai_filter_config_t filter = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+    ESP_ERROR_CHECK(twai_driver_install(&general, &timing, &filter));
+    ESP_ERROR_CHECK(twai_start());
+    ESP_LOGI(TAG, "listening at %s", BITRATES[index].name);
+}
+
+/// The distinction that matters when nothing arrives: errors climbing means
+/// signal is present but we're decoding it wrong (bitrate, or CAN-H/L
+/// swapped). Zero errors means nothing is reaching the transceiver at all —
+/// a wiring or ground problem.
+static void report_silence(void) {
+    twai_status_info_t st;
+    if (twai_get_status_info(&st) != ESP_OK) return;
+
+    ESP_LOGW(TAG, "");
+    ESP_LOGW(TAG, "No frames at %s | rx_err %lu | bus_err %lu",
+             BITRATES[bitrate_index].name,
+             (unsigned long)st.rx_error_counter,
+             (unsigned long)st.bus_error_count);
+
+    if (st.bus_error_count > 0 || st.rx_error_counter > 0) {
+        ESP_LOGW(TAG, "  → Signal IS present but not decoding. Either the");
+        ESP_LOGW(TAG, "    bitrate is wrong (cycling…) or CAN-H/CAN-L are");
+        ESP_LOGW(TAG, "    swapped. Try swapping pin 6 and pin 14.");
+    } else {
+        ESP_LOGW(TAG, "  → Nothing reaching the transceiver at all. Check:");
+        ESP_LOGW(TAG, "    · CAN-H on pin 6, CAN-L on pin 14 (14 is under 6)");
+        ESP_LOGW(TAG, "    · GND on pin 4 or 5 — without it nothing works");
+        ESP_LOGW(TAG, "    · wires actually seated, not resting in plastic");
+        ESP_LOGW(TAG, "    · measure pins 6↔14: a live bus reads ~60 ohm");
+    }
+
+    bitrate_index = (bitrate_index + 1) % BITRATE_COUNT;
+    start_bus(bitrate_index);
+}
+
 static void poll_button(void) {
     static bool was_down = false;
     bool down = gpio_get_level(BOOT_BUTTON) == 0;
@@ -146,15 +200,10 @@ void app_main(void) {
     board_led_init();
     board_led_set(45, 34, 58);
 
-    twai_general_config_t general =
-        TWAI_GENERAL_CONFIG_DEFAULT(MRP_TWAI_TX, MRP_TWAI_RX, TWAI_MODE_LISTEN_ONLY);
-    twai_timing_config_t timing = TWAI_TIMING_CONFIG_500KBITS();
-    twai_filter_config_t filter = TWAI_FILTER_CONFIG_ACCEPT_ALL();
-    ESP_ERROR_CHECK(twai_driver_install(&general, &timing, &filter));
-    ESP_ERROR_CHECK(twai_start());
+    start_bus(bitrate_index);
 
     ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "RECON — listen-only at 500 kbit/s. Cannot transmit.");
+    ESP_LOGI(TAG, "RECON — listen-only. Cannot transmit.");
     ESP_LOGI(TAG, "BOOT once = mark baseline. BOOT again = show what changed.");
     ESP_LOGI(TAG, "");
 
@@ -184,9 +233,7 @@ void app_main(void) {
         if (!marked && now - last_dump >= 10000) {
             last_dump = now;
             if (slot_count == 0) {
-                ESP_LOGW(TAG, "No frames yet. Check: ignition on, CAN-H→pin 6,");
-                ESP_LOGW(TAG, "CAN-L→pin 14, ground, and the 120Ω removed from");
-                ESP_LOGW(TAG, "this transceiver (the car's bus is already terminated).");
+                report_silence();
                 board_led_set(50, 0, 0);
             } else {
                 dump_inventory();
