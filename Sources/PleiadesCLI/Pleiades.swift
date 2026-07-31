@@ -63,6 +63,31 @@ struct Pleiades {
                 print("Scanning requires CoreBluetooth (macOS/iOS).")
                 exit(2)
                 #endif
+            case "enum":
+                #if canImport(CoreBluetooth)
+                let rest = Array(args.dropFirst())
+                guard let module = value(of: "--module", in: rest).flatMap({ UInt32($0, radix: 16) }) else {
+                    print("usage: pleiades enum --module 75A [--pages 01,02,10,11] [--tag X]")
+                    exit(2)
+                }
+                let pages = value(of: "--pages", in: rest)
+                    .map { $0.split(separator: ",").compactMap { UInt8($0, radix: 16) } }
+                    ?? [0x01, 0x02, 0x10, 0x11, 0x12, 0x13, 0x20, 0x30]
+                try await DIDEnumerator.run(
+                    nameHint: value(of: "--name", in: rest),
+                    module: module,
+                    pages: pages,
+                    tag: value(of: "--tag", in: rest),
+                    passes: value(of: "--passes", in: rest).flatMap { Int($0) } ?? 2,
+                    st: value(of: "--st", in: rest) ?? "32",
+                    compareTo: value(of: "--compare", in: rest),
+                    includeVolatile: rest.contains("--include-volatile"),
+                    extendedSession: rest.contains("--extended")
+                )
+                #else
+                print("Enumeration requires CoreBluetooth (macOS/iOS).")
+                exit(2)
+                #endif
             case "map":
                 #if canImport(CoreBluetooth)
                 let rest = Array(args.dropFirst())
@@ -108,6 +133,9 @@ struct Pleiades {
                       --extended                enter diagnostic session 10 03
                       --force                   sweep even if preflight is bleak
                       --module 78E              listen to one module only
+                  pleiades enum --module 75A   read everything one module has,
+                      --pages 01,02,10,11       by walking its support bitmasks
+                      --tag "gate closed"       instead of sweeping blind
                   pleiades map [options]        find where the data lives:
                                                 identify modules, probe every
                                                 page marker 22 XX00

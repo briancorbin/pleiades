@@ -75,6 +75,9 @@ public final class BLEELMTransport: NSObject, OBDTransport, @unchecked Sendable 
     private let handshakeTimeout: TimeInterval
     /// Whether the car has answered anything yet — see `handshakeTimeout`.
     private var hasAnswered = false
+    /// Set while tearing down deliberately, so the disconnect callback can
+    /// tell a normal hang-up from the adapter dropping out.
+    private var closingOnPurpose = false
 
     /// `nameHint` filters discovered adapters by name substring, for when
     /// several BLE devices are advertising nearby.
@@ -105,6 +108,7 @@ public final class BLEELMTransport: NSObject, OBDTransport, @unchecked Sendable 
     public func disconnect() {
         queue.async {
             if let peripheral = self.peripheral {
+                self.closingOnPurpose = true
                 self.central?.cancelPeripheralConnection(peripheral)
             }
             self.failPending(OBDError.connectionClosed)
@@ -245,7 +249,10 @@ extension BLEELMTransport: CBCentralManagerDelegate {
         failPending(OBDError.connectionClosed)
         writeCharacteristic = nil
         notifyCharacteristic = nil
-        setState(.failed(error?.localizedDescription ?? "disconnected"))
+        // Hanging up on purpose isn't a failure. Reporting it as one made a
+        // clean end-of-scan look like the adapter had dropped mid-run.
+        setState(closingOnPurpose ? .idle : .failed(error?.localizedDescription ?? "disconnected"))
+        closingOnPurpose = false
     }
 }
 

@@ -184,6 +184,51 @@ Use `--module 78E` to narrow the receive filter to one module when a result
 has to be complete rather than fast. It costs a sweep per module and removes
 the loss entirely.
 
+## The module map — 2026-07-30
+
+Every module carries the standard UDS identifier `F197`, and it answers in
+plain ASCII. Fifteen addresses became fifteen named boxes for the cost of one
+request each:
+
+| Address | `F197` says | Why we care |
+|---|---|---|
+| `75A` | **Integ. Unit mode** | the body integrated unit — doors, gate, lighting, chimes |
+| `7BC` | Keyless Access & Push Start (C) | knows door and gate state for entry |
+| `7C9` | Keyless Access & Push Start (P) | the passenger-side half |
+| `788` | Airbag System | seatbelt buckle switches |
+| `75B` | Tire pressure monitor | TPMS, per wheel |
+| `71F` | Electric Brake Booster | |
+| `74A` / `74B` | RADAR ASSY B&S LH / RH | blind-spot radar |
+| `77E` | Data Communication Module | telematics |
+| `78E` | Sonar system | parking sensors |
+| `78F` | EyeSight | 92 pages — by far the richest module |
+| `7B8` | VDC/Parking Brake System | |
+| `7DD` | MFD | the centre display |
+| `7E8` | 2.5 DOHC | the engine; also holds the VIN at `F190` |
+| `78B` | *(wouldn't say)* | answers pages `02 03 10 A0` |
+
+The VIN came back clean from `7E8`: `JF2SKAMCXNH519189`.
+
+Pages `01 02 10 F1 FF` are near-universal boilerplate. The *distinctive*
+pages are where a module keeps its own business — `75A` has `11`, `788` has
+`23`, the Keyless pair have `11 12 13 20 30`, EyeSight has ninety-two.
+
+## Enumerate, don't sweep
+
+Once the bitmask convention is known, sweeping a range is the wrong tool.
+Ask `22 XX00`, decode what it advertises, follow the chain bit, read only what
+exists:
+
+```bash
+./scripts/did-enum.sh --module 75A --tag "gate closed"
+```
+
+A page costs eight mask reads plus however many identifiers are really there,
+instead of 256 requests that are mostly `requestOutOfRange`. It also narrows
+the receive filter to one module, so nothing is lost to contention. The output
+is an ordinary snapshot, so `compare` diffs an enumeration exactly like a
+sweep.
+
 ## Scope: 256 identifiers, not 65,536
 
 The default range is `0x0100–0x01FF`, because that's where the car was
