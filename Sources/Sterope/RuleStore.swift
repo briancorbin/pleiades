@@ -53,7 +53,7 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
         // Rule files written before proprietary signals existed key on
         // `pidCode`; PID codes are a subset of the signal id space.
         if let sid = try c.decodeIfPresent(UInt16.self, forKey: .signalID) {
-            signalID = sid
+            signalID = Self.migrated(sid)
         } else {
             signalID = UInt16(try c.decode(UInt8.self, forKey: .pidCode))
         }
@@ -71,6 +71,38 @@ public struct StoredRule: Sendable, Codable, Equatable, Identifiable {
         case id, signalID, pidCode, kind, limit, clearMargin
         case severity, message, enabled, sound, volume
     }
+
+    /// Proprietary signal ids were invented before anyone had measured the
+    /// car. On 2026-07-30 the real ones arrived — the rear gate is `0x104E`
+    /// on the body integrated unit, not the `0x100` we'd made up — and the
+    /// old numbers turned out to collide with live identifiers (`0x120` is a
+    /// support bitmask on this car, not the gear selector).
+    ///
+    /// Without this, a saved rule keeps its stale id, resolves to no signal,
+    /// and silently stops firing. Rules a user wrote by hand are exactly the
+    /// thing that must survive us learning something.
+    static func migrated(_ id: UInt16) -> UInt16 {
+        // PID codes are untouched — they were never invented, only the
+        // proprietary space above 0xFF moved.
+        guard id > 0xFF else { return id }
+        return legacyProprietary[id] ?? id
+    }
+
+    private static let legacyProprietary: [UInt16: UInt16] = [
+        0x100: ProprietarySignal.gate.id,            // measured
+        0x101: ProprietarySignal.doorFrontLeft.id,
+        0x102: ProprietarySignal.doorFrontRight.id,  // measured
+        0x103: ProprietarySignal.doorRearLeft.id,
+        0x104: ProprietarySignal.doorRearRight.id,
+        0x110: ProprietarySignal.beltDriver.id,
+        0x111: ProprietarySignal.beltPassenger.id,
+        0x120: ProprietarySignal.gear.id,
+        0x121: ProprietarySignal.ignition.id,
+        0x130: ProprietarySignal.tpmsFrontLeft.id,
+        0x131: ProprietarySignal.tpmsFrontRight.id,
+        0x132: ProprietarySignal.tpmsRearLeft.id,
+        0x133: ProprietarySignal.tpmsRearRight.id,
+    ]
 
     // `pidCode` is read-only legacy — never written, so encoding is explicit.
     public func encode(to encoder: Encoder) throws {

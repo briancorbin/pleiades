@@ -16,6 +16,10 @@ public final class TelemetryModel: ObservableObject {
     /// A dongle simply never answers mode 22, so these stay empty.
     @Published public private(set) var proprietary: [UInt16: Double] = [:]
     @Published public private(set) var hasProprietary = false
+    /// Consecutive unanswered reads per signal, and the ones we've given up
+    /// on. Not published — this is bookkeeping, not something to render.
+    private var misses: [UInt16: Int] = [:]
+    private var silent: Set<UInt16> = []
     @Published public private(set) var freezeFrame: [UInt8: Double] = [:]
     @Published public private(set) var freezeDTC: DTC?
     /// Celaeno's archive, newest first. Survives code clearing.
@@ -231,16 +235,45 @@ public final class TelemetryModel: ObservableObject {
     /// Proprietary signals ride the slow cadence — latches and tire
     /// pressures don't change at gauge rates.
     private func pollProprietary() async {
+        // Headers on for the batch. A mode-22 request goes out functionally
+        // and a dozen modules may answer; with headers off their replies
+        // arrive anonymous and run together into nonsense. With headers on,
+        // `readProprietary` can pick out the module that owns the signal.
+        // Switched back afterwards because the PID parser has no idea what a
+        // header is.
+        // Restored inline at the end, not in a `defer` — a deferred Task
+        // would send ATH0 whenever it got around to it, and the next PID poll
+        // would meet a header it can't parse.
+        _ = try? await source.session.send("ATH1")
+
         var found: [UInt16: Double] = [:]
-        for signal in ProprietarySignal.all {
+        for signal in ProprietarySignal.all where !silent.contains(signal.id) {
             if let value = try? await source.session.readProprietary(signal) {
                 found[signal.id] = value
+                misses[signal.id] = 0
+            } else {
+                // Half the catalog is signals we haven't found on this car
+                // yet. Asking for them forever costs a timeout each, every
+                // cycle — so stop asking, and let a source change reset it.
+                let count = (misses[signal.id] ?? 0) + 1
+                misses[signal.id] = count
+                if count >= 3 { silent.insert(signal.id) }
             }
         }
+        _ = try? await source.session.send("ATH0")
+
         if !found.isEmpty {
             proprietary = found
             hasProprietary = true
         }
+    }
+
+    /// Signals that have gone unanswered often enough to stop polling.
+    /// Cleared whenever the source changes — a different car, or Merope
+    /// instead of the dongle, has a different idea of what exists.
+    public func resetSignalDiscovery() {
+        misses.removeAll()
+        silent.removeAll()
     }
 
     public func proprietaryValue(_ signal: ProprietarySignal) -> Double? {

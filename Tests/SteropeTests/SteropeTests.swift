@@ -1,4 +1,45 @@
 import XCTest
+import Maia
+
+/// Saved rules have to survive us learning the car's real identifiers.
+final class SignalIDMigrationTests: XCTestCase {
+    func testALegacyGateRuleStillPointsAtTheGate() throws {
+        // A rule written before 2026-07-30, keyed on the invented 0x100.
+        let json = """
+        {"id":"gate","signalID":256,"kind":"above","limit":0.5,
+         "clearMargin":0,"severity":"warning","message":"Gate open","enabled":true}
+        """
+        let rule = try JSONDecoder().decode(StoredRule.self, from: Data(json.utf8))
+        XCTAssertEqual(rule.signalID, ProprietarySignal.gate.id)
+        XCTAssertNotNil(rule.signal, "a saved rule silently stopped resolving")
+        XCTAssertNotNil(rule.alertRule(), "a saved rule silently stopped firing")
+    }
+
+    func testEveryLegacyProprietaryIDResolvesAfterMigration() throws {
+        for legacy in [0x100, 0x101, 0x102, 0x103, 0x104, 0x110, 0x111,
+                       0x120, 0x121, 0x130, 0x131, 0x132, 0x133] {
+            let migrated = StoredRule.migrated(UInt16(legacy))
+            XCTAssertNotEqual(migrated, UInt16(legacy), "0x\(String(legacy, radix: 16)) never moved")
+            XCTAssertNotNil(
+                SignalRef.resolve(migrated),
+                "0x\(String(legacy, radix: 16)) migrated to something that doesn't exist"
+            )
+        }
+    }
+
+    func testPIDRulesAreLeftAlone() {
+        // Only the invented space above 0xFF moved.
+        for pid in PID.all {
+            XCTAssertEqual(StoredRule.migrated(UInt16(pid.code)), UInt16(pid.code))
+        }
+    }
+
+    func testMigrationIsIdempotent() {
+        // Re-saving a migrated rule and reloading it must not move it again.
+        let once = StoredRule.migrated(0x100)
+        XCTAssertEqual(StoredRule.migrated(once), once)
+    }
+}
 @testable import Sterope
 import Maia
 

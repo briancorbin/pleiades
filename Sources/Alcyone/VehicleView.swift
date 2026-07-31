@@ -107,17 +107,27 @@ public struct VehicleView: View {
     }
 
     private func latchPill(_ signal: ProprietarySignal) -> some View {
-        let open = (model.proprietaryValue(signal) ?? 0) > 0.5
+        // Three states, not two. A signal we've never found on this car
+        // returns nil, and rendering that as "shut" is a lie the size of an
+        // open tailgate — it looks exactly like a door that's fine.
+        let reading = model.proprietaryValue(signal)
+        let open = (reading ?? 0) > 0.5
+        let known = reading != nil
+        let icon = !known ? "questionmark.circle"
+            : (open ? "door.left.hand.open" : "door.left.hand.closed")
+        let tint = !known ? Theme.textDim.opacity(0.5)
+            : (open ? Theme.redline : Theme.textDim)
+
         return VStack(spacing: 4) {
-            Image(systemName: open ? "door.left.hand.open" : "door.left.hand.closed")
+            Image(systemName: icon)
                 .font(.system(size: 15))
-                .foregroundStyle(open ? Theme.redline : Theme.textDim)
+                .foregroundStyle(tint)
             Text(signal.name.replacingOccurrences(of: "Door ", with: ""))
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(Theme.textDim)
-            Text(open ? "OPEN" : "shut")
+                .foregroundStyle(known ? Theme.textDim : Theme.textDim.opacity(0.5))
+            Text(!known ? "—" : (open ? "OPEN" : "shut"))
                 .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(open ? Theme.redline : Theme.textDim)
+                .foregroundStyle(tint)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
@@ -138,14 +148,19 @@ public struct VehicleView: View {
     }
 
     private func beltPill(_ signal: ProprietarySignal, label: String) -> some View {
-        let buckled = (model.proprietaryValue(signal) ?? 0) > 0.5
+        // Same three states. An unbuckled belt and a belt we can't read are
+        // very different things to show someone.
+        let reading = model.proprietaryValue(signal)
+        let buckled = (reading ?? 0) > 0.5
+        let known = reading != nil
         return HStack(spacing: 6) {
-            Image(systemName: buckled ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+            Image(systemName: !known ? "questionmark.circle"
+                : (buckled ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"))
                 .font(.system(size: 12))
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
         }
-        .foregroundStyle(buckled ? Theme.copper : Theme.textDim)
+        .foregroundStyle(!known ? Theme.textDim.opacity(0.5) : (buckled ? Theme.copper : Theme.textDim))
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Theme.background.opacity(0.5), in: Capsule())
