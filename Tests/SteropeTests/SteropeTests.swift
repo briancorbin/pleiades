@@ -258,10 +258,12 @@ final class InterceptionPointTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("chime-hw-\(UUID().uuidString)", isDirectory: true)
         let store = ChimePolicyStore(directory: dir)
-        XCTAssertTrue(await store.installedPoints().isEmpty)
+        let initial = await store.installedPoints()
+        XCTAssertTrue(initial.isEmpty)
         await store.setInstalled([.output])
 
         let reloaded = ChimePolicyStore(directory: dir)
-        XCTAssertEqual(await reloaded.installedPoints(), [.output])
+        let loaded = await reloaded.installedPoints()
+        XCTAssertEqual(loaded, [.output])
     }
 }
