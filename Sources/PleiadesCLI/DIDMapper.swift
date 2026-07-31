@@ -52,10 +52,12 @@ enum DIDMapper {
         }
 
         print("\nIdentity — standard UDS identifiers:")
+        var identities: [String: String] = [:]
         for entry in identity {
             let replies = (try? await session.scanDID(entry.id)) ?? []
             for reply in replies.filter(\.isPositive) {
                 guard let data = reply.data, !data.isEmpty else { continue }
+                identities[String(format: "%03X:%@", reply.module, entry.name)] = render(data)
                 print(String(
                     format: "  %03X  %-16s %@",
                     reply.module,
@@ -63,6 +65,9 @@ enum DIDMapper {
                     render(data)
                 ))
             }
+        }
+        if identities.isEmpty {
+            print("  (nothing answered — this car may not carry the standard F1xx set)")
         }
 
         // Two passes, unioned. A page missed to contention in one pass is a
@@ -90,6 +95,62 @@ enum DIDMapper {
 
         transport.disconnect()
         report(pages: pages, masks: masks)
+
+        // Persist it. A discovery tool whose findings live only in terminal
+        // scrollback makes you re-run the car to answer a question about a
+        // scan you already did.
+        do {
+            print("\nSaved \(try save(pages: pages, masks: masks, identities: identities))")
+        } catch {
+            print("\nCouldn't save the map: \(error)")
+        }
+    }
+
+    private static func save(
+        pages: [UInt32: Set<UInt8>],
+        masks: [String: [UInt8]],
+        identities: [String: String]
+    ) throws -> String {
+        try FileManager.default.createDirectory(atPath: DIDReport.directory, withIntermediateDirectories: true)
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyyMMdd-HHmmss"
+        let path = "\(DIDReport.directory)/map-\(stamp.string(from: Date())).json"
+
+        var modules: [String: [String: Any]] = [:]
+        for (module, highBytes) in pages {
+            let key = String(format: "%03X", module)
+            var entry: [String: Any] = [
+                "pages": highBytes.sorted().map { String(format: "%02X", $0) },
+            ]
+            var blocks: [String: String] = [:]
+            for high in highBytes.sorted() {
+                if let mask = masks[String(format: "%03X:%02X", module, high)] {
+                    blocks[String(format: "%02X00", high)] = mask.hexString
+                }
+            }
+            entry["masks"] = blocks
+            modules[key] = entry
+        }
+        for (key, value) in identities {
+            let parts = key.split(separator: ":")
+            guard parts.count == 2 else { continue }
+            var entry = modules[String(parts[0])] ?? [:]
+            var known = entry["identity"] as? [String: String] ?? [:]
+            known[String(parts[1])] = value
+            entry["identity"] = known
+            modules[String(parts[0])] = entry
+        }
+
+        let payload: [String: Any] = [
+            "capturedAt": ISO8601DateFormatter().string(from: Date()),
+            "modules": modules,
+        ]
+        let data = try JSONSerialization.data(
+            withJSONObject: payload,
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try data.write(to: URL(fileURLWithPath: path))
+        return path
     }
 
     private static func report(pages: [UInt32: Set<UInt8>], masks: [String: [UInt8]]) {
