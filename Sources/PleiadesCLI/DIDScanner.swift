@@ -22,7 +22,8 @@ enum DIDScanner {
         includeVolatile: Bool,
         st: String,
         extendedSession: Bool,
-        force: Bool
+        force: Bool,
+        module: UInt32?
     ) async throws {
         let count = Int(last) - Int(first) + 1
         guard count > 0 else {
@@ -51,7 +52,15 @@ enum DIDScanner {
         try await session.initialize(pinnedProtocol: 6)
         try await configure(session, st: st, extendedSession: extendedSession)
 
-        guard try await preflight(session, force: force) else {
+        if let module {
+            // Narrow to one module. Fifteen answering the same request at once
+            // costs responses — the support bitmasks advertise identifiers that
+            // several modules then never got a word in edgewise about.
+            _ = try? await session.send(String(format: "ATCRA%03X", module))
+            print("  listening only to \(String(format: "%03X", module))")
+        }
+
+        guard try await preflight(session, force: force || module != nil) else {
             transport.disconnect()
             return
         }
@@ -108,7 +117,7 @@ enum DIDScanner {
     /// 0x71F, 0x74A, 0x78E and friends, outside it. They answer — Merope
     /// watched fourteen of them answer this exact request, listening
     /// promiscuously — and the dongle discards every one before we see it.
-    private static func configure(_ session: ELM327Session, st: String, extendedSession: Bool) async throws {
+    static func configure(_ session: ELM327Session, st: String, extendedSession: Bool) async throws {
         // Headers on: one functional request draws answers from a dozen
         // modules, and the header is the only thing saying which said what.
         _ = try? await session.send("ATH1")

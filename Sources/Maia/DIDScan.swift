@@ -216,6 +216,40 @@ public enum DIDScan {
     }
 }
 
+// MARK: - Support bitmasks
+
+public extension DIDScan {
+    /// Decode a `22 xx00` reply as a support bitmask.
+    ///
+    /// The car volunteers its own map, in the same shape mode-01 PID `00`
+    /// uses: four bytes, one bit per identifier, covering the 32 that follow
+    /// the base — and the last bit chains to the next block.
+    ///
+    /// Verified against the real car: `74A` answered `00 00 E0 50` for base
+    /// `0x0100`, which predicts 0111 0112 0113 011A 011C, and those are
+    /// exactly the five identifiers it went on to answer. `78F` and `7DD`
+    /// were the only modules with the chain bit set at `0x0120` and the only
+    /// two that answered `0x0140`.
+    ///
+    /// This is what makes discovery tractable: 65,536 identifiers, but the
+    /// map costs one request per block.
+    static func supportedIdentifiers(mask: [UInt8], base: UInt16) -> [UInt16] {
+        var supported: [UInt16] = []
+        for (byteIndex, byte) in mask.prefix(4).enumerated() {
+            for bit in 0..<8 where byte & (0x80 >> bit) != 0 {
+                supported.append(base &+ UInt16(byteIndex * 8 + bit) &+ 1)
+            }
+        }
+        return supported
+    }
+
+    /// Whether this block's reply points at another block 32 identifiers on —
+    /// the low bit of the fourth byte, mirroring the PID walk.
+    static func chainsToNextBlock(mask: [UInt8]) -> Bool {
+        mask.count >= 4 && mask[3] & 0x01 != 0
+    }
+}
+
 // MARK: - Snapshots
 
 /// One sweep of a DID range, with the vehicle in one state.

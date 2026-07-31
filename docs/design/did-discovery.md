@@ -134,6 +134,56 @@ something nobody did to the car during it.
 `--include-volatile` shows them anyway. Reach for it only if the range looks
 suspiciously empty; a slow counter can hide inside a fast one's noise.
 
+## What page 01 turned out to be — and the shortcut it handed us
+
+The first complete sweep, with the filter open, got 156 answers from all
+fifteen modules. Nothing changed when the tailgate opened. Nothing was even
+*volatile* — 156 identifiers, two passes, on a live car, and not one byte
+drifted.
+
+That's not a null result. It says page 01 isn't live data at all, and reading
+it properly says what it is instead:
+
+**`22 xx00` is a support bitmask.** Four bytes, one bit per identifier,
+covering the 32 that follow — with the last bit chaining to the next block.
+The exact convention mode-01 PID `00` uses, which this codebase already walks
+in `supportedPIDs()`.
+
+The car told us so unambiguously. `74A` answered `00 00 E0 50` at `0x0100`,
+which decodes to `0111 0112 0113 011A 011C` — precisely the five identifiers
+it went on to answer, and no others. `78F` and `7DD` were the only two modules
+with the chain bit set at `0x0120`, and the only two that answered `0x0140`.
+
+So page 01 is a dozen constant status flags per module — `01` for present,
+`FF` for not-applicable — and it is now **fully enumerated**. The gate is not
+in it, and we never have to look again.
+
+The shortcut is the point. A 65,536-identifier space does not need 65,536
+requests: ask the 256 page markers and the car says where its data lives.
+
+```bash
+./scripts/did-map.sh
+```
+
+That also reads the standard UDS identity identifiers (`F190` VIN, `F197`
+system name, `F187` part number) from every module, which turns `0x78E` from
+an address into a name — worth knowing when fifteen modules answer and only
+one of them owns the tailgate.
+
+## A caveat the masks exposed: functional addressing loses responses
+
+Nine of the fifteen modules answered exactly what their bitmask advertised.
+The other six advertised identifiers they never answered — and they were the
+six with the fewest replies overall (`71F`, `75B`, `788`, `7B8` at two each).
+
+They aren't inconsistent. Their answers were lost. Fifteen modules replying to
+one functional request is real contention, and the adapter drops what it can't
+keep up with.
+
+Use `--module 78E` to narrow the receive filter to one module when a result
+has to be complete rather than fast. It costs a sweep per module and removes
+the loss entirely.
+
 ## Scope: 256 identifiers, not 65,536
 
 The default range is `0x0100–0x01FF`, because that's where the car was

@@ -174,6 +174,44 @@ final class RealCarReplyTests: XCTestCase {
     }
 }
 
+/// The car volunteers its own map. Every case here is measured, not invented —
+/// masks and the identifiers they predicted, from `logs/did-20260730-184939`.
+final class SupportBitmaskTests: XCTestCase {
+    func testBodyModuleMaskPredictsExactlyWhatItAnswered() {
+        // 74A answered 00 00 E0 50 for base 0100, then answered these five
+        // and nothing else.
+        let supported = DIDScan.supportedIdentifiers(mask: [0x00, 0x00, 0xE0, 0x50], base: 0x0100)
+        XCTAssertEqual(supported, [0x0111, 0x0112, 0x0113, 0x011A, 0x011C])
+    }
+
+    func testRicherModuleMask() {
+        // 7DD answered 00 01 F9 51.
+        let supported = DIDScan.supportedIdentifiers(mask: [0x00, 0x01, 0xF9, 0x51], base: 0x0100)
+        XCTAssertEqual(
+            supported,
+            [0x0110, 0x0111, 0x0112, 0x0113, 0x0114, 0x0115, 0x0118, 0x011A, 0x011C, 0x0120]
+        )
+    }
+
+    func testChainBitPicksOutTheTwoModulesThatHadAnotherBlock() {
+        // 78F and 7DD answered 01 00 00 01 at 0120 and were the only two to
+        // answer 0140. Everyone else answered 01 00 00 00 and stopped.
+        XCTAssertTrue(DIDScan.chainsToNextBlock(mask: [0x01, 0x00, 0x00, 0x01]))
+        XCTAssertFalse(DIDScan.chainsToNextBlock(mask: [0x01, 0x00, 0x00, 0x00]))
+        XCTAssertFalse(DIDScan.chainsToNextBlock(mask: [0x09, 0x00, 0x00, 0x00]))
+    }
+
+    func testEmptyMaskSupportsNothing() {
+        XCTAssertTrue(DIDScan.supportedIdentifiers(mask: [0, 0, 0, 0], base: 0x0100).isEmpty)
+        XCTAssertFalse(DIDScan.chainsToNextBlock(mask: [0, 0, 0, 0]))
+    }
+
+    func testShortMaskDoesNotOverrun() {
+        XCTAssertEqual(DIDScan.supportedIdentifiers(mask: [0x80], base: 0x0100), [0x0101])
+        XCTAssertFalse(DIDScan.chainsToNextBlock(mask: [0x80]))
+    }
+}
+
 final class DIDSnapshotTests: XCTestCase {
     private func reply(_ module: UInt32, _ did: UInt16, _ data: [UInt8]?) -> DIDReply {
         DIDReply(module: module, did: did, data: data, negativeCode: data == nil ? 0x31 : nil)

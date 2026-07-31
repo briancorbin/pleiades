@@ -56,10 +56,24 @@ struct Pleiades {
                     // which is enough for a dozen modules to get a word in.
                     st: value(of: "--st", in: rest) ?? "32",
                     extendedSession: rest.contains("--extended"),
-                    force: rest.contains("--force")
+                    force: rest.contains("--force"),
+                    module: value(of: "--module", in: rest).flatMap { UInt32($0, radix: 16) }
                 )
                 #else
                 print("Scanning requires CoreBluetooth (macOS/iOS).")
+                exit(2)
+                #endif
+            case "map":
+                #if canImport(CoreBluetooth)
+                let rest = Array(args.dropFirst())
+                try await DIDMapper.run(
+                    nameHint: value(of: "--name", in: rest),
+                    st: value(of: "--st", in: rest) ?? "32",
+                    module: value(of: "--module", in: rest).flatMap { UInt32($0, radix: 16) },
+                    extendedSession: rest.contains("--extended")
+                )
+                #else
+                print("Mapping requires CoreBluetooth (macOS/iOS).")
                 exit(2)
                 #endif
             case "compare":
@@ -93,6 +107,10 @@ struct Pleiades {
                       --st 32                   adapter response timeout, ×4ms
                       --extended                enter diagnostic session 10 03
                       --force                   sweep even if preflight is bleak
+                      --module 78E              listen to one module only
+                  pleiades map [options]        find where the data lives:
+                                                identify modules, probe every
+                                                page marker 22 XX00
                   pleiades compare <a> <b>      diff two stored sweeps, no car
                 """)
                 exit(2)
