@@ -177,7 +177,10 @@ public final class TelemetryModel: ObservableObject {
             // the "works sometimes" bug: a race with BLE.
             guard source.isReady else { return }
             do {
-                try await source.session.initialize(pinnedProtocol: source.pinnedProtocol)
+                try await source.session.initialize(
+                    pinnedProtocol: source.pinnedProtocol,
+                    receiveAllModules: source.receivesAllModules
+                )
             } catch {
                 return // stay uninitialized; the next tick tries again
             }
@@ -274,6 +277,11 @@ public final class TelemetryModel: ObservableObject {
         // would send ATH0 whenever it got around to it, and the next PID poll
         // would meet a header it can't parse.
         _ = try? await source.session.send("ATH1")
+        // Fixed timing for the batch. Adaptive timing tunes the wait from
+        // observed response times, which is right for a PID one ECU answers
+        // and wrong here: a body module is slower than the engine, and the
+        // adapter would hang up before it got a word in.
+        _ = try? await source.session.send("ATAT0")
 
         var found: [UInt16: Double] = [:]
         for signal in ProprietarySignal.all where !silent.contains(signal.id) {
@@ -289,6 +297,7 @@ public final class TelemetryModel: ObservableObject {
                 if count >= 3 { silent.insert(signal.id) }
             }
         }
+        _ = try? await source.session.send("ATAT1")
         _ = try? await source.session.send("ATH0")
 
         if !found.isEmpty {

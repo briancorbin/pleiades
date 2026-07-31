@@ -14,6 +14,10 @@ public protocol TelemetrySource: Sendable {
     /// ELM327 protocol number to pin at startup, skipping the adapter's slow
     /// automatic search. Nil lets it hunt.
     var pinnedProtocol: Int? { get }
+    /// Whether the adapter needs its CAN receive filter widened to hear
+    /// modules outside the OBD response window — true for a real ELM327,
+    /// meaningless for a simulator that answers everything asked of it.
+    var receivesAllModules: Bool { get }
     /// Whether the transport can carry a command yet.
     ///
     /// A simulated adapter always can. A BLE dongle has to scan, connect and
@@ -27,6 +31,8 @@ public extension TelemetrySource {
     var pinnedProtocol: Int? { nil }
     /// Nothing to wait for when the car is imaginary.
     var isReady: Bool { true }
+    /// A simulated adapter has no filter to widen.
+    var receivesAllModules: Bool { false }
 }
 
 /// The bench source: Electra's fake car behind its fake ELM327.

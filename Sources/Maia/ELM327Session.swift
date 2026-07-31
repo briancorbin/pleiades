@@ -16,13 +16,52 @@ public actor ELM327Session {
     /// kbit/s) — every Subaru of this era, and most cars since 2008. Nil
     /// leaves the adapter hunting, which is the right default for an unknown
     /// car.
-    public func initialize(pinnedProtocol: Int? = nil) async throws {
+    public func initialize(pinnedProtocol: Int? = nil, receiveAllModules: Bool = false) async throws {
         _ = try await transport.send("ATZ")
         var setup = ["ATE0", "ATL0", "ATS0", "ATH0"]
         setup.append(pinnedProtocol.map { "ATSP\($0)" } ?? "ATSP0")
         for command in setup {
             _ = try await transport.send(command)
         }
+        if receiveAllModules {
+            _ = try? await openReceiveFilter()
+        }
+    }
+
+    /// Widen the adapter's CAN receive filter past the legislated OBD window.
+    ///
+    /// **Without this, most of the car is inaudible.** In protocol 6 an
+    /// ELM327 accepts only `0x7E8–0x7EF`, the eight response slots the
+    /// emissions standard reserves. The body integrated unit answers from
+    /// `0x75A`, the airbag module from `0x788` — outside the window, so the
+    /// adapter discards their replies in hardware before any software sees
+    /// them. Ask for the rear gate without this and you get silence from a
+    /// module that answered.
+    ///
+    /// Mask `700` makes only the top three address bits significant and
+    /// filter `700` requires them set, admitting `0x700–0x7FF`.
+    ///
+    /// Returns false when the adapter won't do it — some clones implement
+    /// neither form, and then a CAN tap is the only way to hear these.
+    @discardableResult
+    public func openReceiveFilter(_ range: String = "700") async throws -> Bool {
+        let filter = try await transport.send("ATCF\(range)")
+        let mask = try await transport.send("ATCM\(range)")
+        if Self.accepted(filter), Self.accepted(mask) { return true }
+        // Later firmware takes a wildcard in the single-address form.
+        let wildcard = try? await transport.send("ATCRA7XX")
+        return wildcard.map(Self.accepted) ?? false
+    }
+
+    /// Put the receive filter back to the adapter's default.
+    public func resetReceiveFilter() async throws {
+        _ = try await transport.send("ATCRA")
+    }
+
+    /// An ELM327 answers `?` to a command it doesn't implement.
+    static func accepted(_ reply: String) -> Bool {
+        let cleaned = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !cleaned.isEmpty && !cleaned.contains("?")
     }
 
     /// Request a single PID and decode it.

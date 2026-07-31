@@ -21,6 +21,11 @@ public final class DongleSource: TelemetrySource, @unchecked Sendable {
         transport.state == .ready
     }
 
+    /// The gate lives on module 0x75A, outside the OBD response window the
+    /// adapter listens to by default. Without widening the filter it answers
+    /// and we never hear it.
+    public let receivesAllModules = true
+
     public func connect() {
         transport.connect()
     }

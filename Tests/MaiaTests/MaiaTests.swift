@@ -89,6 +89,47 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(log, ["ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0"])
     }
 
+    func testInitializeWidensTheFilterForARealAdapter() async throws {
+        // Without this the body integrated unit answers 22 104E and the
+        // adapter throws the reply away: 0x75A is outside 0x7E8-0x7EF, the
+        // only range an ELM327 accepts in protocol 6.
+        let mock = MockAdapter(responses: ["ATCF700": "OK\r\r", "ATCM700": "OK\r\r"])
+        let session = ELM327Session(transport: mock)
+        try await session.initialize(pinnedProtocol: 6, receiveAllModules: true)
+        let log = await mock.log
+        XCTAssertTrue(log.contains("ATCF700"), "never widened the receive filter")
+        XCTAssertTrue(log.contains("ATCM700"))
+    }
+
+    func testInitializeLeavesTheFilterAloneByDefault() async throws {
+        let mock = MockAdapter(responses: [:])
+        let session = ELM327Session(transport: mock)
+        try await session.initialize()
+        let log = await mock.log
+        XCTAssertFalse(log.contains { $0.hasPrefix("ATCF") })
+    }
+
+    func testFilterFallsBackToTheWildcardForm() async throws {
+        // A clone that doesn't implement CF/CM answers "?".
+        let mock = MockAdapter(responses: [
+            "ATCF700": "?\r\r", "ATCM700": "?\r\r", "ATCRA7XX": "OK\r\r",
+        ])
+        let session = ELM327Session(transport: mock)
+        let opened = try await session.openReceiveFilter()
+        XCTAssertTrue(opened)
+        let log = await mock.log
+        XCTAssertTrue(log.contains("ATCRA7XX"))
+    }
+
+    func testFilterReportsFailureWhenTheAdapterRefusesEverything() async throws {
+        let mock = MockAdapter(responses: [
+            "ATCF700": "?\r\r", "ATCM700": "?\r\r", "ATCRA7XX": "?\r\r",
+        ])
+        let session = ELM327Session(transport: mock)
+        let opened = try await session.openReceiveFilter()
+        XCTAssertFalse(opened, "claimed success on an adapter that said no")
+    }
+
     func testInitializePinsProtocolWhenAsked() async throws {
         // Protocol 6 skips the 5-15s automatic search the app used to time
         // out on against the real car.

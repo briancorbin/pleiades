@@ -129,19 +129,11 @@ enum DIDScanner {
         _ = try? await session.send("ATAT0")
         _ = try? await session.send("ATST\(st)")
 
-        // Widen the receive filter to 0x700–0x7FF: mask 700 makes only the
-        // top three bits significant, filter 700 requires them set.
+        // Widen the receive filter to 0x700–0x7FF. Same call the app makes,
+        // for the same reason: the body modules are outside the OBD window.
         print("\nOpening the receive filter past the OBD window:")
-        let filter = (try? await session.send("ATCF700")) ?? "?"
-        let mask = (try? await session.send("ATCM700")) ?? "?"
-        print("  ATCF 700 → \(clean(filter))    ATCM 700 → \(clean(mask))")
-
-        if clean(filter).contains("?") || clean(mask).contains("?") {
-            // Some clones implement only the single-address form, which takes
-            // wildcards on later firmware.
-            let wildcard = (try? await session.send("ATCRA7XX")) ?? "?"
-            print("  fell back to ATCRA 7XX → \(clean(wildcard))")
-        }
+        let opened = (try? await session.openReceiveFilter()) ?? false
+        print("  \(opened ? "widened to 0x700–0x7FF" : "✗ the adapter refused — it can only hear 0x7E8–0x7EF")")
 
         guard extendedSession else { return }
         // Opt-in: some identifiers only answer outside the default session.
