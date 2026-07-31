@@ -8,6 +8,8 @@ import Maia
 ///     pleiades ble [--name X]      # probe a BLE dongle: connect, PID map, sample
 ///     pleiades ble --scan          # just list nearby BLE devices
 ///     pleiades bench [host[:port]] # poll a WiFi dongle (default 192.168.0.10:35000)
+///     pleiades scan [--tag X]      # sweep mode-22 identifiers, diff vs last sweep
+///     pleiades compare a.json b.json  # diff two stored sweeps, no car needed
 @main
 struct Pleiades {
     static let watchlist: [PID] = [
@@ -29,13 +31,47 @@ struct Pleiades {
             case "ble":
                 #if canImport(CoreBluetooth)
                 let rest = Array(args.dropFirst())
-                let scanOnly = rest.contains("--scan")
-                let nameHint = rest.firstIndex(of: "--name").map { rest[rest.index(after: $0)] }
-                try await BLEProbe.run(nameHint: nameHint, scanOnly: scanOnly)
+                try await BLEProbe.run(
+                    nameHint: value(of: "--name", in: rest),
+                    scanOnly: rest.contains("--scan")
+                )
                 #else
                 print("BLE requires CoreBluetooth (macOS/iOS).")
                 exit(2)
                 #endif
+            case "scan":
+                #if canImport(CoreBluetooth)
+                let rest = Array(args.dropFirst())
+                try await DIDScanner.run(
+                    nameHint: value(of: "--name", in: rest),
+                    // 0x01xx is the range the car was seen answering during
+                    // recon. Sweeping all 65,536 identifiers would take a day.
+                    first: hex(value(of: "--from", in: rest)) ?? 0x0100,
+                    last: hex(value(of: "--to", in: rest)) ?? 0x01FF,
+                    passes: value(of: "--passes", in: rest).flatMap { Int($0) } ?? 2,
+                    tag: value(of: "--tag", in: rest),
+                    compareTo: value(of: "--compare", in: rest),
+                    includeVolatile: rest.contains("--include-volatile")
+                )
+                #else
+                print("Scanning requires CoreBluetooth (macOS/iOS).")
+                exit(2)
+                #endif
+            case "compare":
+                let rest = Array(args.dropFirst())
+                let files = rest.filter { !$0.hasPrefix("--") }
+                guard files.count == 2 else {
+                    print("usage: pleiades compare <before.json> <after.json> [--include-volatile]")
+                    exit(2)
+                }
+                let before = try DIDReport.load(files[0])
+                let after = try DIDReport.load(files[1])
+                DIDReport.printSummary(after)
+                DIDReport.printDiff(
+                    from: before,
+                    to: after,
+                    includeVolatile: rest.contains("--include-volatile")
+                )
             default:
                 print("""
                 usage:
@@ -43,6 +79,13 @@ struct Pleiades {
                   pleiades ble [--name X]       probe a BLE dongle
                   pleiades ble --scan           list nearby BLE devices
                   pleiades bench [host[:port]]  poll a WiFi dongle
+                  pleiades scan [options]       sweep mode-22 identifiers
+                      --tag "gate closed"       label the vehicle state (do this)
+                      --from 0100 --to 01FF     identifier range
+                      --passes 2                repeats, to flag volatile values
+                      --compare <file.json>     diff target (default: last sweep)
+                      --include-volatile        show values that move on their own
+                  pleiades compare <a> <b>      diff two stored sweeps, no car
                 """)
                 exit(2)
             }
@@ -50,6 +93,19 @@ struct Pleiades {
             print("Error: \(error)")
             exit(1)
         }
+    }
+
+    /// `--flag value`, tolerating a flag that trails off the end of argv.
+    static func value(of flag: String, in args: [String]) -> String? {
+        guard let index = args.firstIndex(of: flag) else { return nil }
+        let next = args.index(after: index)
+        guard next < args.endIndex, !args[next].hasPrefix("--") else { return nil }
+        return args[next]
+    }
+
+    static func hex(_ text: String?) -> UInt16? {
+        guard let text else { return nil }
+        return UInt16(text.replacingOccurrences(of: "0x", with: ""), radix: 16)
     }
 
     static func demo(seconds: Int) async throws {

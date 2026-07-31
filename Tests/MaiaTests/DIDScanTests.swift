@@ -1,0 +1,267 @@
+import XCTest
+@testable import Maia
+
+/// The scanner runs once, in a driveway, with a tailgate held open. Every
+/// parsing decision it makes has to be settled here first.
+final class DIDFrameParsingTests: XCTestCase {
+    func testParsesCompactElevenBitFrame() {
+        // ATS0: header and payload collapse into one odd-length hex run.
+        let frames = DIDScan.frames(in: "7E8046201005A\r")
+        XCTAssertEqual(frames.count, 1)
+        XCTAssertEqual(frames.first?.header, 0x7E8)
+        XCTAssertEqual(frames.first?.bytes, [0x04, 0x62, 0x01, 0x00, 0x5A])
+    }
+
+    func testParsesSpacedFrame() {
+        let frames = DIDScan.frames(in: "7E8 04 62 01 00 5A\r")
+        XCTAssertEqual(frames.first?.header, 0x7E8)
+        XCTAssertEqual(frames.first?.bytes, [0x04, 0x62, 0x01, 0x00, 0x5A])
+    }
+
+    func testParsesTwentyNineBitHeaderByParity() {
+        // An even-length run means an 8-char header; nothing else fits.
+        let frames = DIDScan.frames(in: "18DAF110036201\r")
+        XCTAssertEqual(frames.first?.header, 0x18DAF110)
+        XCTAssertEqual(frames.first?.bytes, [0x03, 0x62, 0x01])
+    }
+
+    func testSeparatesMultipleResponders() {
+        let raw = "7E8046201005A\r7E9046201000F\r71F04620100FF\r"
+        XCTAssertEqual(DIDScan.frames(in: raw).map(\.header), [0x7E8, 0x7E9, 0x71F])
+    }
+
+    func testIgnoresChromeAndBlankLines() {
+        let raw = "SEARCHING...\r\r7E8046201005A\r\rOK\r"
+        XCTAssertEqual(DIDScan.frames(in: raw).count, 1)
+    }
+
+    func testRejectsNonHex() {
+        XCTAssertTrue(DIDScan.frames(in: "NO DATA\r").isEmpty)
+        XCTAssertTrue(DIDScan.frames(in: "CAN ERROR\r").isEmpty)
+    }
+}
+
+final class DIDReassemblyTests: XCTestCase {
+    func testSingleFrameHonorsItsLengthByte() {
+        // The last byte is CAN padding, not payload — the PCI says 4.
+        let messages = DIDScan.messages(in: "7E80462010012AA\r")
+        XCTAssertEqual(messages.first?.bytes, [0x62, 0x01, 0x00, 0x12])
+    }
+
+    func testReassemblesMultiFrame() {
+        // First frame declares 10 bytes and carries 6; the consecutive frame
+        // brings the last 4.
+        let raw = """
+        7E8100A620101020304
+        7E82105060708
+        """
+        let messages = DIDScan.messages(in: raw)
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(
+            messages.first?.bytes,
+            [0x62, 0x01, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+        )
+    }
+
+    func testInterleavedMultiFrameFromTwoModules() {
+        // Two modules answering at once is the normal case on this car, and
+        // their consecutive frames arrive interleaved.
+        let raw = """
+        7E81008620102030405
+        7E91008620112131415
+        7E8210607
+        7E9211617
+        """
+        let messages = DIDScan.messages(in: raw)
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertEqual(messages.first(where: { $0.module == 0x7E8 })?.bytes.last, 0x07)
+        XCTAssertEqual(messages.first(where: { $0.module == 0x7E9 })?.bytes.last, 0x17)
+    }
+
+    func testDoesNotConcatenateTwoSingleFramesFromOneModule() {
+        // responsePending then the real answer: two messages, not one blob.
+        let messages = DIDScan.messages(in: "7E8037F2278\r7E80462010012\r")
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertEqual(messages[0].bytes, [0x7F, 0x22, 0x78])
+        XCTAssertEqual(messages[1].bytes, [0x62, 0x01, 0x00, 0x12])
+    }
+}
+
+final class DIDReplyTests: XCTestCase {
+    func testPositiveReply() {
+        let replies = DIDScan.replies(to: 0x0100, in: "7E8056201001234\r")
+        XCTAssertEqual(replies.count, 1)
+        XCTAssertEqual(replies[0].module, 0x7E8)
+        XCTAssertEqual(replies[0].data, [0x12, 0x34])
+        XCTAssertTrue(replies[0].isPositive)
+    }
+
+    func testNegativeReplyKeepsItsCode() {
+        let replies = DIDScan.replies(to: 0x0100, in: "7E8037F2231\r")
+        XCTAssertEqual(replies[0].negativeCode, 0x31)
+        XCTAssertFalse(replies[0].isPositive)
+        XCTAssertEqual(UDSNegativeCode.name(0x31), "requestOutOfRange")
+    }
+
+    func testDropsResponsePendingWhenTheAnswerFollows() {
+        let replies = DIDScan.replies(to: 0x0100, in: "7E8037F2278\r7E80462010012\r")
+        XCTAssertEqual(replies.count, 1)
+        XCTAssertEqual(replies[0].data, [0x12])
+    }
+
+    func testKeepsResponsePendingWhenNothingFollows() {
+        let replies = DIDScan.replies(to: 0x0100, in: "7E8037F2278\r")
+        XCTAssertEqual(replies.count, 1)
+        XCTAssertEqual(replies[0].negativeCode, 0x78)
+    }
+
+    func testIgnoresAnswersToADifferentIdentifier() {
+        // A late reply to the previous request must not be filed under this one.
+        XCTAssertTrue(DIDScan.replies(to: 0x0100, in: "7E80462010912\r").isEmpty)
+    }
+
+    func testSilenceIsNotAnError() {
+        XCTAssertTrue(DIDScan.replies(to: 0x0100, in: "NO DATA\r\r").isEmpty)
+    }
+}
+
+final class DIDSnapshotTests: XCTestCase {
+    private func reply(_ module: UInt32, _ did: UInt16, _ data: [UInt8]?) -> DIDReply {
+        DIDReply(module: module, did: did, data: data, negativeCode: data == nil ? 0x31 : nil)
+    }
+
+    func testMergeFlagsValuesThatMovedBetweenPasses() {
+        let snapshot = DIDSnapshot.merge(
+            passes: [
+                [reply(0x7E8, 0x0100, [0x01]), reply(0x7E8, 0x0101, [0x10])],
+                [reply(0x7E8, 0x0100, [0x01]), reply(0x7E8, 0x0101, [0x11])],
+            ],
+            tag: "idle",
+            firstDID: 0x0100,
+            lastDID: 0x0101,
+            capturedAt: Date()
+        )
+        XCTAssertEqual(snapshot.replies.count, 2)
+        XCTAssertFalse(snapshot.replies[0].volatile)
+        XCTAssertTrue(snapshot.replies[1].volatile)
+        XCTAssertEqual(snapshot.passes, 2)
+    }
+
+    func testMergeKeepsTheFirstPassValue() {
+        let snapshot = DIDSnapshot.merge(
+            passes: [[reply(0x7E8, 0x0100, [0xAA])], [reply(0x7E8, 0x0100, [0xBB])]],
+            tag: nil, firstDID: 0x0100, lastDID: 0x0100, capturedAt: Date()
+        )
+        XCTAssertEqual(snapshot.replies[0].data, [0xAA])
+    }
+
+    func testDiffFindsTheChangedIdentifier() {
+        let before = DIDSnapshot.merge(
+            passes: [[reply(0x7E8, 0x0100, [0x00, 0x00]), reply(0x7E8, 0x0101, [0xFF])]],
+            tag: "gate closed", firstDID: 0x0100, lastDID: 0x0101, capturedAt: Date()
+        )
+        let after = DIDSnapshot.merge(
+            passes: [[reply(0x7E8, 0x0100, [0x00, 0x01]), reply(0x7E8, 0x0101, [0xFF])]],
+            tag: "gate open", firstDID: 0x0100, lastDID: 0x0101, capturedAt: Date()
+        )
+        let deltas = DIDScan.diff(from: before, to: after)
+        XCTAssertEqual(deltas.count, 1)
+        XCTAssertEqual(deltas[0].did, 0x0100)
+        XCTAssertEqual(deltas[0].kind, .changed)
+        XCTAssertEqual(deltas[0].changedByteIndices, [1])
+    }
+
+    func testDiffHidesVolatileIdentifiersUnlessAsked() {
+        // A counter that ticks on its own can't be evidence about the gate.
+        let before = DIDSnapshot.merge(
+            passes: [[reply(0x7E8, 0x0100, [0x01])], [reply(0x7E8, 0x0100, [0x02])]],
+            tag: "closed", firstDID: 0x0100, lastDID: 0x0100, capturedAt: Date()
+        )
+        let after = DIDSnapshot.merge(
+            passes: [[reply(0x7E8, 0x0100, [0x09])], [reply(0x7E8, 0x0100, [0x0A])]],
+            tag: "open", firstDID: 0x0100, lastDID: 0x0100, capturedAt: Date()
+        )
+        XCTAssertTrue(DIDScan.diff(from: before, to: after).isEmpty)
+        XCTAssertEqual(DIDScan.diff(from: before, to: after, includeVolatile: true).count, 1)
+    }
+
+    func testDiffClassifiesAppearAndVanish() {
+        let before = DIDSnapshot.merge(
+            passes: [[reply(0x7E8, 0x0100, nil), reply(0x7E8, 0x0101, [0x05])]],
+            tag: nil, firstDID: 0x0100, lastDID: 0x0101, capturedAt: Date()
+        )
+        let after = DIDSnapshot.merge(
+            passes: [[reply(0x7E8, 0x0100, [0x07]), reply(0x7E8, 0x0101, nil)]],
+            tag: nil, firstDID: 0x0100, lastDID: 0x0101, capturedAt: Date()
+        )
+        let deltas = DIDScan.diff(from: before, to: after)
+        XCTAssertEqual(deltas.map(\.kind), [.appeared, .vanished])
+    }
+
+    func testDiffIgnoresIdenticalSweeps() {
+        let sweep = DIDSnapshot.merge(
+            passes: [[reply(0x7E8, 0x0100, [0x01, 0x02, 0x03])]],
+            tag: nil, firstDID: 0x0100, lastDID: 0x0100, capturedAt: Date()
+        )
+        XCTAssertTrue(DIDScan.diff(from: sweep, to: sweep).isEmpty)
+    }
+
+    func testLengthChangeMarksTheTrailingBytes() {
+        let delta = DIDDelta(
+            module: 0x7E8, did: 0x0100, kind: .changed,
+            before: [0x01], after: [0x01, 0x02], volatile: false
+        )
+        XCTAssertEqual(delta.changedByteIndices, [1])
+    }
+
+    func testSnapshotSurvivesAJSONRoundTrip() throws {
+        let original = DIDSnapshot.merge(
+            passes: [
+                [reply(0x7E8, 0x0100, [0xDE, 0xAD]), reply(0x71F, 0x0101, nil)],
+                [reply(0x7E8, 0x0100, [0xBE, 0xEF]), reply(0x71F, 0x0101, nil)],
+            ],
+            tag: "gate open",
+            firstDID: 0x0100,
+            lastDID: 0x0101,
+            capturedAt: Date(timeIntervalSince1970: 1_785_000_000)
+        )
+        let restored = try DIDSnapshot(json: original.encoded())
+        XCTAssertEqual(restored, original)
+        XCTAssertEqual(restored.tag, "gate open")
+        XCTAssertTrue(restored.replies.first { $0.did == 0x0100 }?.volatile ?? false)
+    }
+
+    func testSnapshotJSONIsReadableHex() throws {
+        let snapshot = DIDSnapshot.merge(
+            passes: [[reply(0x7E8, 0x0142, [0x0A, 0xFF])]],
+            tag: nil, firstDID: 0x0100, lastDID: 0x01FF,
+            capturedAt: Date(timeIntervalSince1970: 0)
+        )
+        let text = String(decoding: try snapshot.encoded(), as: UTF8.self)
+        XCTAssertTrue(text.contains("\"7E8\""), text)
+        XCTAssertTrue(text.contains("\"0142\""), text)
+        XCTAssertTrue(text.contains("\"0A FF\""), text)
+    }
+}
+
+final class DIDSessionTests: XCTestCase {
+    func testScanDIDAsksForTheRightIdentifier() async throws {
+        let adapter = MockAdapter(responses: ["220142": "7E8056201421234\r\r"])
+        let session = ELM327Session(transport: adapter)
+        let replies = try await session.scanDID(0x0142)
+        XCTAssertEqual(replies.count, 1)
+        XCTAssertEqual(replies[0].data, [0x12, 0x34])
+        let log = await adapter.log
+        XCTAssertEqual(log, ["220142"])
+    }
+
+    func testScanDIDReturnsEveryResponder() async throws {
+        let adapter = MockAdapter(responses: [
+            "220100": "7E80462010001\r7E90462010002\r71F037F2231\r\r",
+        ])
+        let session = ELM327Session(transport: adapter)
+        let replies = try await session.scanDID(0x0100)
+        XCTAssertEqual(replies.count, 3)
+        XCTAssertEqual(replies.filter(\.isPositive).map(\.module), [0x7E8, 0x7E9])
+    }
+}

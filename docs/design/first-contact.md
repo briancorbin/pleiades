@@ -85,3 +85,18 @@ already works and doesn't change.
   gateway, and the chime work needs a tap closer to the cluster. That's the
   single most important thing this session tells us.
 - Only after data is proven: the permanent 12 V install (SHED-73).
+
+## What actually happened — 2026-07-30
+
+The second bullet. Pins 6/14 read **120 Ω**, not 60, and passive listening saw
+**no broadcast traffic at all** on an otherwise error-free line. The port is a
+gateway-isolated diagnostic stub: it carries request/response only, and there
+is nothing there to overhear.
+
+The mark/diff procedure above is still exactly right — it just moves up a
+layer, from CAN frame ids to mode-22 identifiers. See **`did-discovery.md`**,
+which is this document's sequel and the current live procedure.
+
+The dash tap isn't off the table, but it's now the fallback rather than the
+plan: it's invasive, and the car answers `22 01xx` from fourteen modules
+without anyone removing a panel.

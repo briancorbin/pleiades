@@ -144,7 +144,7 @@ public final class TelemetryModel: ObservableObject {
     /// One poll cycle. Public so tests can drive the model without the timer.
     public func poll(fast: Bool = true, slow: Bool = false) async {
         if !isInitialized {
-            try? await source.session.initialize()
+            try? await source.session.initialize(pinnedProtocol: source.pinnedProtocol)
             history = await eventStore.all()
             if let ruleStore {
                 sterope = SteropeEngine(rules: await ruleStore.all().alertRules())

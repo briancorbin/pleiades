@@ -11,6 +11,14 @@ public protocol TelemetrySource: Sendable {
     /// Called once per poll tick. Electra advances its fake clock here; a real
     /// adapter has nothing to do.
     func tick(dt: Double) async
+    /// ELM327 protocol number to pin at startup, skipping the adapter's slow
+    /// automatic search. Nil lets it hunt.
+    var pinnedProtocol: Int? { get }
+}
+
+public extension TelemetrySource {
+    /// A simulated adapter has no protocol to search for.
+    var pinnedProtocol: Int? { nil }
 }
 
 /// The bench source: Electra's fake car behind its fake ELM327.

@@ -72,12 +72,27 @@ public final class BLEELMTransport: NSObject, OBDTransport, @unchecked Sendable 
     private var sendToken = 0
     private let nameHint: String?
     private let commandTimeout: TimeInterval
+    private let handshakeTimeout: TimeInterval
+    /// Whether the car has answered anything yet — see `handshakeTimeout`.
+    private var hasAnswered = false
 
     /// `nameHint` filters discovered adapters by name substring, for when
     /// several BLE devices are advertising nearby.
-    public init(nameHint: String? = nil, commandTimeout: TimeInterval = 5) {
+    ///
+    /// Two timeouts, because the first reply and every reply after it are
+    /// different animals: an ELM327's automatic protocol search routinely
+    /// takes 5–15 s ("SEARCHING…"), while a car that has already answered
+    /// once responds in milliseconds. A single 5 s timeout hangs up on the
+    /// real car mid-search; a single 20 s one stalls the polling loop for
+    /// twenty seconds every time a PID goes quiet.
+    public init(
+        nameHint: String? = nil,
+        commandTimeout: TimeInterval = 5,
+        handshakeTimeout: TimeInterval = 20
+    ) {
         self.nameHint = nameHint
         self.commandTimeout = commandTimeout
+        self.handshakeTimeout = handshakeTimeout
     }
 
     public func connect() {
@@ -139,9 +154,10 @@ public final class BLEELMTransport: NSObject, OBDTransport, @unchecked Sendable 
                     write.properties.contains(.write) ? .withResponse : .withoutResponse
                 peripheral.writeValue(Data((command + "\r").utf8), for: write, type: type)
 
-                self.queue.asyncAfter(deadline: .now() + self.commandTimeout) { [weak self] in
+                let timeout = self.hasAnswered ? self.commandTimeout : self.handshakeTimeout
+                self.queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
                     guard let self, self.sendToken == token, self.pendingSend != nil else { return }
-                    self.failPending(OBDError.busError("no reply to \(command) within \(Int(self.commandTimeout))s"))
+                    self.failPending(OBDError.busError("no reply to \(command) within \(Int(timeout))s"))
                 }
             }
         }
@@ -279,6 +295,7 @@ extension BLEELMTransport: CBPeripheralDelegate {
     ) {
         guard characteristic.uuid == notifyCharacteristic?.uuid, let data = characteristic.value else { return }
         for response in framer.consume(String(decoding: data, as: UTF8.self)) {
+            hasAnswered = true
             pendingSend?.resume(returning: response)
             pendingSend = nil
         }

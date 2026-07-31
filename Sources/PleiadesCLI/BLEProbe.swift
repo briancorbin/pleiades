@@ -44,10 +44,10 @@ private func printPermissionHelp() {
 
 enum BLEProbe {
     static func run(nameHint: String?, scanOnly: Bool) async throws {
-        // The ELM's auto-protocol search on the first request routinely
-        // takes 5-15s ("SEARCHING..."), so the default 5s timeout hangs up
-        // before the car has finished answering.
-        let transport = BLEELMTransport(nameHint: nameHint, commandTimeout: 20)
+        // The transport allows a longer window for the first reply than for
+        // the rest — an ELM auto-protocol search takes 5-15s, everything
+        // after it takes milliseconds.
+        let transport = BLEELMTransport(nameHint: nameHint)
 
         transport.onStateChange = { state in
             print("  [ble] \(state.describedState)")
@@ -80,14 +80,11 @@ enum BLEProbe {
 
         print("\nInitializing adapter…")
         let session = ELM327Session(transport: transport)
-        try await session.initialize()
-
         // Pin the protocol instead of letting the adapter hunt: a 2022
         // Forester is ISO 15765-4, 11-bit ids, 500 kbit/s — protocol 6.
         // Skipping the search makes the first request answer immediately.
-        if let reply = try? await transport.send("ATSP6") {
-            print("  protocol: forced to 6 (CAN 11-bit/500k) — \(reply.trimmingCharacters(in: .whitespacesAndNewlines))")
-        }
+        try await session.initialize(pinnedProtocol: 6)
+        print("  protocol: pinned to 6 (CAN 11-bit/500k)")
 
         // Adapter identity — this is the one command that answers even with
         // the ignition off, so it separates "no dongle" from "no car".
@@ -102,7 +99,7 @@ enum BLEProbe {
         } catch {
             print("  ✗ \(error)")
             print("\n  Retrying with automatic protocol detection…")
-            _ = try? await transport.send("ATSP0")
+            _ = try? await session.send("ATSP0")
             do {
                 supported = try await session.supportedPIDs()
                 print("  ✓ auto-detect worked")

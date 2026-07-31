@@ -89,6 +89,17 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(log, ["ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0"])
     }
 
+    func testInitializePinsProtocolWhenAsked() async throws {
+        // Protocol 6 skips the 5-15s automatic search the app used to time
+        // out on against the real car.
+        let mock = MockAdapter(responses: [:])
+        let session = ELM327Session(transport: mock)
+        try await session.initialize(pinnedProtocol: 6)
+        let log = await mock.log
+        XCTAssertEqual(log.last, "ATSP6")
+        XCTAssertFalse(log.contains("ATSP0"))
+    }
+
     func testReadDecodesReading() async throws {
         let mock = MockAdapter(responses: ["010C": "410C1AF8\r\r"])
         let session = ELM327Session(transport: mock)

@@ -8,10 +8,19 @@ public actor ELM327Session {
     }
 
     /// Reset the adapter and configure it for clean machine parsing:
-    /// no echo, no linefeeds, no spaces, no headers, auto protocol.
-    public func initialize() async throws {
+    /// no echo, no linefeeds, no spaces, no headers.
+    ///
+    /// `pinnedProtocol` skips the adapter's automatic protocol search, which
+    /// costs 5–15 s on the first request and can fail outright on a port that
+    /// only answers diagnostics. Pass 6 for ISO 15765-4 (CAN, 11-bit, 500
+    /// kbit/s) — every Subaru of this era, and most cars since 2008. Nil
+    /// leaves the adapter hunting, which is the right default for an unknown
+    /// car.
+    public func initialize(pinnedProtocol: Int? = nil) async throws {
         _ = try await transport.send("ATZ")
-        for command in ["ATE0", "ATL0", "ATS0", "ATH0", "ATSP0"] {
+        var setup = ["ATE0", "ATL0", "ATS0", "ATH0"]
+        setup.append(pinnedProtocol.map { "ATSP\($0)" } ?? "ATSP0")
+        for command in setup {
             _ = try await transport.send(command)
         }
     }
@@ -89,6 +98,24 @@ public actor ELM327Session {
         guard echoed == signal.id else { throw OBDError.malformedResponse(raw) }
         let scaled = UInt16(payload[2]) << 8 | UInt16(payload[3])
         return Double(scaled) / 10.0
+    }
+
+    /// Adapter-level escape hatch for the AT commands the typed API doesn't
+    /// cover — `ATH1` before a DID scan, `ATSP6` to pin the protocol.
+    public func send(_ command: String) async throws -> String {
+        try await transport.send(command)
+    }
+
+    /// Ask the whole bus for one identifier (mode 22) and return every answer
+    /// separately, refusals included.
+    ///
+    /// Unlike `readProprietary`, this expects the adapter to have headers on
+    /// (`ATH1`): a functional request draws replies from a dozen modules at
+    /// once, and without the header they're an anonymous pile. Silence is a
+    /// result, not an error — an unanswered identifier returns no replies.
+    public func scanDID(_ did: UInt16) async throws -> [DIDReply] {
+        let raw = try await transport.send(String(format: "22%04X", did))
+        return DIDScan.replies(to: did, in: raw)
     }
 
     /// Read one PID from a freeze frame (mode 02) — the sensor snapshot the
