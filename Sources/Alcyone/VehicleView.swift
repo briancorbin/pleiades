@@ -1,10 +1,20 @@
 import Maia
 import SwiftUI
 
-/// The tab that only exists because of Merope. Latches, belts, and per-wheel
-/// tire pressures are on the car's own bus and unreachable by any OBD
-/// request — when the source is a dongle this tab says so plainly rather
-/// than showing empty gauges.
+/// The state of the car as a thing you own, rather than an engine you're
+/// watching: what's open, what's buckled, what the tires are at, how much
+/// fuel is left.
+///
+/// This tab used to hide itself behind "no CAN tap connected", on the
+/// premise that latches were unreachable by any OBD request. That premise
+/// was wrong. Mode 22 asks the body integrated unit directly, and on
+/// 2026-07-30 `22 104E` on module `0x75A` came back `FF` with the tailgate
+/// open — through the dongle, no tap involved.
+///
+/// So nothing is gated on the source any more. Each reading shows what it
+/// has, and says "—" when it has nothing, which is the honest answer whether
+/// the cause is a missing tap, an identifier we haven't found yet, or a
+/// module that just didn't answer this time.
 public struct VehicleView: View {
     @ObservedObject var model: TelemetryModel
     @AppStorage("alcyone.imperial") private var imperial = false
@@ -17,15 +27,15 @@ public struct VehicleView: View {
     public var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                if model.hasProprietary {
-                    if model.gateOpen {
-                        gateCard
-                    }
-                    latchCard
-                    tpmsCard
-                    beltCard
-                } else {
-                    unavailableCard
+                if model.gateOpen {
+                    gateCard
+                }
+                vehicleCard
+                latchCard
+                beltCard
+                tpmsCard
+                if !model.hasProprietary {
+                    bodySignalsNote
                 }
             }
             .padding(22)
@@ -35,21 +45,80 @@ public struct VehicleView: View {
         .preferredColorScheme(.dark)
     }
 
-    private var unavailableCard: some View {
+    /// Standard OBD, available from any source — the numbers that describe
+    /// the vehicle rather than the engine's current effort.
+    private var vehicleCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("VEHICLE")
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2),
+                spacing: 10
+            ) {
+                fact("Fuel", model.value(.fuelLevel), "%", digits: 0)
+                fact("Battery", model.value(.controlModuleVoltage), "V", digits: 1)
+                fact("Oil", temperature(model.value(.oilTemp)), temperatureUnit)
+                fact("Coolant", temperature(model.value(.coolantTemp)), temperatureUnit)
+                fact("Outside", temperature(model.value(.ambientAirTemp)), temperatureUnit)
+                fact("Intake", temperature(model.value(.intakeAirTemp)), temperatureUnit)
+                fact("Running", model.value(.runTime).map { $0 / 60 }, "min", digits: 0)
+                fact("Since cleared", distance(model.value(.distanceSinceCleared)), distanceUnit, digits: 0)
+            }
+        }
+        .padding(14)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func fact(_ label: String, _ value: Double?, _ unit: String, digits: Int = 1) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(1)
+                .foregroundStyle(Theme.textDim)
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(value.map { String(format: "%.\(digits)f", $0) } ?? "—")
+                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .foregroundStyle(value == nil ? Theme.textDim.opacity(0.5) : Theme.text)
+                Text(value == nil ? "" : unit)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.textDim)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .background(Theme.background.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func temperature(_ celsius: Double?) -> Double? {
+        celsius.map { imperial ? Units.fahrenheit($0) : $0 }
+    }
+
+    private var temperatureUnit: String { imperial ? "°F" : "°C" }
+
+    private func distance(_ km: Double?) -> Double? {
+        km.map { imperial ? $0 * 0.621371 : $0 }
+    }
+
+    private var distanceUnit: String { imperial ? "mi" : "km" }
+
+    /// Shown only when nothing on the body side answered at all — so it's a
+    /// note about this session, not a claim that the data doesn't exist.
+    private var bodySignalsNote: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Image(systemName: "antenna.radiowaves.left.and.right.slash")
                     .foregroundStyle(Theme.textDim)
-                Text("NO CAN TAP CONNECTED")
+                Text("NO BODY SIGNALS YET")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(1.5)
                     .foregroundStyle(Theme.textDim)
                 Spacer()
             }
             Text("""
-            Latch states, seatbelts and per-wheel tire pressures live on the \
-            car's own CAN bus. No OBD request can retrieve them — a dongle has \
-            nothing to ask. Connect Merope to see this page.
+            Latches and belts come from the body integrated unit over mode 22, \
+            which works through a dongle — but only for identifiers we've \
+            found. The rear gate and front passenger door are confirmed; the \
+            rest are still being mapped. Tire pressures need Merope.
             """)
             .font(.system(size: 12))
             .foregroundStyle(Theme.textDim)
