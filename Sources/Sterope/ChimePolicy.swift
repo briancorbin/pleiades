@@ -1,4 +1,5 @@
 import Foundation
+import Maia
 
 /// The car's own alerts, and what we want to happen when they fire.
 ///
@@ -151,15 +152,15 @@ public extension Chime {
         Chime(id: "gate", name: "Rear gate ajar",
               detail: "The one that started this project. Fires continuously while driving with the gate open.",
               reach: .clusterTap, points: [.inputCAN, .output],
-              signal: ProprietarySignalRef(id: 0x100)),
+              signal: ProprietarySignalRef(id: ProprietarySignal.gate.id)),
         Chime(id: "seatbelt", name: "Seatbelt reminder",
               detail: "Escalates with speed and time. No factory setting exists for it.",
               reach: .clusterTap, points: [.inputDiscrete, .inputCAN, .output],
-              signal: ProprietarySignalRef(id: 0x110)),
+              signal: ProprietarySignalRef(id: ProprietarySignal.beltDriver.id)),
         Chime(id: "door", name: "Door ajar",
               detail: "Door open with the ignition on.",
               reach: .clusterTap, points: [.inputCAN, .output],
-              signal: ProprietarySignalRef(id: 0x101)),
+              signal: ProprietarySignalRef(id: ProprietarySignal.doorFrontLeft.id)),
         Chime(id: "turnsignal", name: "Turn signal tick",
               detail: "Synthesized by the cluster from the stalk switch — no input we can reach.",
               reach: .clusterTap, points: [.output]),

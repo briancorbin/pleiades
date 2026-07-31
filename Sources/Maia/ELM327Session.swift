@@ -91,13 +91,25 @@ public actor ELM327Session {
     /// CAN tap can answer these — a dongle has nothing to ask.
     public func readProprietary(_ signal: ProprietarySignal) async throws -> Double {
         let raw = try await transport.send(signal.command)
+
+        // Headers on: a functional request can draw answers from several
+        // modules at once, and only the header says which one is ours. The
+        // real car's latch signals come back a single byte wide, so nothing
+        // here may assume a fixed width.
+        let addressed = DIDScan.replies(to: signal.id, in: raw)
+            .filter { signal.module == nil || $0.module == signal.module }
+            .first(where: \.isPositive)
+        if let data = addressed?.data {
+            return signal.decode(data)
+        }
+
+        // Headers off: one anonymous reply, which is what the emulator and
+        // Merope's impersonation send.
         let payload = try Self.payload(from: raw, mode: 0x22, code: nil)
-        // Reply echoes the 2-byte identifier, then a uint16 at one decimal.
-        guard payload.count >= 4 else { throw OBDError.malformedResponse(raw) }
+        guard payload.count >= 3 else { throw OBDError.malformedResponse(raw) }
         let echoed = UInt16(payload[0]) << 8 | UInt16(payload[1])
         guard echoed == signal.id else { throw OBDError.malformedResponse(raw) }
-        let scaled = UInt16(payload[2]) << 8 | UInt16(payload[3])
-        return Double(scaled) / 10.0
+        return signal.decode(Array(payload.dropFirst(2)))
     }
 
     /// Adapter-level escape hatch for the AT commands the typed API doesn't

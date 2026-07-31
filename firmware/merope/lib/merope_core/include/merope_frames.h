@@ -27,19 +27,32 @@ extern "C" {
 // Signal ids 0x00–0xFF are OBD PID codes (see the SIG_* table in the .c).
 // Proprietary signals — the ones no dongle can ask for — live above that,
 // which is the whole reason Merope exists.
-#define MRP_SIG_GATE 0x100      // rear gate: 0 closed, 1 ajar/open
-#define MRP_SIG_DOOR_FL 0x101
-#define MRP_SIG_DOOR_FR 0x102
-#define MRP_SIG_DOOR_RL 0x103
-#define MRP_SIG_DOOR_RR 0x104
-#define MRP_SIG_BELT_DRIVER 0x110     // 0 unbuckled, 1 buckled
-#define MRP_SIG_BELT_PASSENGER 0x111
-#define MRP_SIG_GEAR 0x120            // 0 P, 1 R, 2 N, 3 D
-#define MRP_SIG_IGNITION 0x121        // 0 off, 1 acc, 2 run
-#define MRP_SIG_TPMS_FL 0x130         // kPa
-#define MRP_SIG_TPMS_FR 0x131
-#define MRP_SIG_TPMS_RL 0x132
-#define MRP_SIG_TPMS_RR 0x133
+//
+// These must match Sources/Maia/ProprietarySignal.swift exactly: the app
+// asks by identifier, and Merope answers by identifier. Nothing reconciles
+// them at runtime.
+//
+// The latch ids below are the CAR'S OWN, measured 2026-07-30 by enumerating
+// module 0x75A ("Integ. Unit") with the tailgate shut and again with it open.
+// 0x104E moved for the gate and not the passenger door; 0x104B the reverse.
+#define MRP_SIG_GATE 0x104E     // rear gate: 0 closed, non-zero ajar/open
+#define MRP_SIG_DOOR_FR 0x104B  // front passenger
+#define MRP_SIG_ANY_OPENING 0x1073  // any door or the gate
+#define MRP_SIG_DOOR_FL 0x104A  // neighbours of the two confirmed hits —
+#define MRP_SIG_DOOR_RL 0x104C  // almost certainly the other doors, but
+#define MRP_SIG_DOOR_RR 0x104D  // not yet measured one at a time
+
+// Merope's own ids, in a range the Forester was never seen answering. Belts
+// most likely live on module 0x788 (Airbag System) and TPMS on 0x75B (Tire
+// pressure monitor); enumerating those replaces these with real numbers.
+#define MRP_SIG_BELT_DRIVER 0xFE10    // 0 unbuckled, 1 buckled
+#define MRP_SIG_BELT_PASSENGER 0xFE11
+#define MRP_SIG_GEAR 0xFE20           // 0 P, 1 R, 2 N, 3 D
+#define MRP_SIG_IGNITION 0xFE21       // 0 off, 1 acc, 2 run
+#define MRP_SIG_TPMS_FL 0xFE30        // kPa
+#define MRP_SIG_TPMS_FR 0xFE31
+#define MRP_SIG_TPMS_RL 0xFE32
+#define MRP_SIG_TPMS_RR 0xFE33
 
 typedef struct {
     uint16_t id;

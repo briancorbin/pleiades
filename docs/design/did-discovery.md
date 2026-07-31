@@ -113,7 +113,40 @@ The `^^` marker is deliberately the same notation the recon firmware uses for
 changed CAN bytes — you end up reading both in the same afternoon and they
 should not require switching mental gears.
 
-### Confirm before believing
+### Found it — 2026-07-30
+
+Module `0x75A`, enumerated three times:
+
+| DID | gate closed | gate open | psgr door open | |
+|---|---|---|---|---|
+| `104B` | `00` | `00` | `FF` | front passenger door |
+| `104E` | `00` | **`FF`** | `00` | **the rear gate** |
+| `1073` | `00` | `FF` | `FF` | any opening |
+| `1116` | `00` | `00` | `FF` | passenger door, page 11 mirror |
+| `1117` | `00` | `FF` | `00` | rear gate, page 11 mirror |
+
+**`22 104E` on `0x75A` is the rear gate.** `FF` open, `00` shut.
+
+The third state is what earned it. The first diff turned up three
+identifiers moving together, and any of them could have been the gate.
+Opening the passenger door instead split them cleanly: `104E` ignored it,
+`104B` tracked it, `1073` responded to both — so `1073` is an aggregate and
+the other two are specific.
+
+Two details worth carrying:
+
+- **The car answers `FF` for true, not `01`.** A decoder testing `== 1`
+  reads every open tailgate as closed.
+- **`1024` was a false positive.** It moved `A6 → A5` in the first diff and
+  looked like a candidate; across three runs the two-pass filter caught it
+  drifting on its own and excluded it. That mechanism paid for itself here.
+
+Still unmeasured: the other three doors (`104A`, `104C`, `104D` are the
+neighbours, all `00` throughout, almost certainly them but not yet proven one
+at a time), seatbelts (try module `0x788`, Airbag System), and TPMS (try
+`0x75B`, Tire pressure monitor).
+
+## Confirm before believing
 
 One diff is a correlation. Close the gate and sweep a third time; if the byte
 returns to `00`, it tracks. If it doesn't, you found a counter that happened

@@ -331,6 +331,63 @@ final class DIDSnapshotTests: XCTestCase {
     }
 }
 
+/// The measurement this whole project was built to make.
+///
+/// Module 75A ("Integ. Unit") enumerated three times — tailgate shut,
+/// tailgate open, passenger door open — from
+/// `logs/did-2026073019{0933,1135,1652}`. Five identifiers moved, and the
+/// third state is what tells them apart:
+///
+/// ```
+/// DID     gate closed   gate open   psgr door
+/// 104B    00            00          FF          front passenger door
+/// 104E    00            FF          00          THE REAR GATE
+/// 1073    00            FF          FF          any opening
+/// 1116    00            00          FF          passenger door (page 11)
+/// 1117    00            FF          00          rear gate (page 11)
+/// ```
+final class MeasuredSignalTests: XCTestCase {
+    func testGateIsTheIdentifierThatMovedForTheGateAlone() {
+        XCTAssertEqual(ProprietarySignal.gate.id, 0x104E)
+        XCTAssertEqual(ProprietarySignal.gate.module, 0x75A)
+        XCTAssertTrue(ProprietarySignal.gate.verified)
+        XCTAssertEqual(ProprietarySignal.gate.command, "22104E")
+    }
+
+    func testTheCarAnswersFFForTrueNotOne() {
+        // 00 -> FF, never 00 -> 01. A decoder testing `== 1` would read every
+        // open tailgate as closed.
+        XCTAssertEqual(ProprietarySignal.gate.decode([0xFF]), 1)
+        XCTAssertEqual(ProprietarySignal.gate.decode([0x00]), 0)
+    }
+
+    func testMeropesTwoByteEncodingStillDecodes() {
+        // The bench sends a scaled uint16; the car sends one byte. Both work.
+        XCTAssertEqual(ProprietarySignal.gate.decode([0x00, 0x01]), 1)
+        // 0x08CA = 2250, one decimal place -> 225.0 kPa, about 32.6 psi.
+        XCTAssertEqual(ProprietarySignal.tpmsFrontLeft.decode([0x08, 0xCA]), 225.0, accuracy: 0.01)
+    }
+
+    func testVerifiedSetIsExactlyWhatWasMeasured() {
+        let ids = Set(ProprietarySignal.all.filter(\.verified).map(\.id))
+        XCTAssertEqual(ids, [0x104E, 0x104B, 0x1073])
+    }
+
+    func testUnverifiedSignalsDoNotCollideWithRealIdentifiers() {
+        // The car answered pages 01, 02, 10, 11, F1 and FF. Merope's own ids
+        // sit in FE, which it never answered — so a guess can't be mistaken
+        // for a measurement.
+        for signal in ProprietarySignal.all where !signal.verified && signal.id >= 0xFE00 {
+            XCTAssertEqual(signal.id >> 8, 0xFE, "\(signal.name) strayed out of Merope's range")
+        }
+    }
+
+    func testGateAndPassengerDoorAreDistinctSignals() {
+        XCTAssertNotEqual(ProprietarySignal.gate.id, ProprietarySignal.doorFrontRight.id)
+        XCTAssertNotEqual(ProprietarySignal.gate.id, ProprietarySignal.anyOpening.id)
+    }
+}
+
 final class DIDSessionTests: XCTestCase {
     func testScanDIDAsksForTheRightIdentifier() async throws {
         let adapter = MockAdapter(responses: ["220142": "7E8056201421234\r\r"])
@@ -340,6 +397,35 @@ final class DIDSessionTests: XCTestCase {
         XCTAssertEqual(replies[0].data, [0x12, 0x34])
         let log = await adapter.log
         XCTAssertEqual(log, ["220142"])
+    }
+
+    func testReadProprietaryPicksItsOwnModuleOutOfACrowd() async throws {
+        // Headers on, two modules answering. Only 75A owns the gate; the
+        // other reply is a different module's data at the same identifier.
+        let adapter = MockAdapter(responses: [
+            "22104E": "7E8 04 62 10 4E 00\r75A 04 62 10 4E FF\r\r",
+        ])
+        let session = ELM327Session(transport: adapter)
+        let value = try await session.readProprietary(.gate)
+        XCTAssertEqual(value, 1, "took the wrong module's answer")
+    }
+
+    func testReadProprietaryStillWorksWithHeadersOff() async throws {
+        // What the emulator and Merope's impersonation send: one anonymous
+        // reply, single byte wide.
+        let adapter = MockAdapter(responses: ["22104E": "62104EFF\r\r"])
+        let session = ELM327Session(transport: adapter)
+        let value = try await session.readProprietary(.gate)
+        XCTAssertEqual(value, 1)
+    }
+
+    func testReadProprietaryRejectsAnAnswerToSomethingElse() async {
+        let adapter = MockAdapter(responses: ["22104E": "62104BFF\r\r"])
+        let session = ELM327Session(transport: adapter)
+        do {
+            _ = try await session.readProprietary(.gate)
+            XCTFail("accepted the passenger door as the gate")
+        } catch {}
     }
 
     func testScanDIDReturnsEveryResponder() async throws {
