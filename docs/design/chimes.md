@@ -172,6 +172,13 @@ Two flavors:
 
 ### 3b. Transparent gateway — intercept the *inputs*, not just the output
 
+> **Where this physically happens: see `can-access.md`.** The car is
+> several buses joined by a gateway, and the gateway is a node on each
+> rather than a junction they pass through — so the cut goes wherever the
+> *cluster* attaches, not at the gateway and not at the source. Which bus
+> that is remains unmeasured; the ten-minute back-probe test is in that doc.
+
+
 Rather than only tapping the speaker, cut the signals feeding the module and
 interpose: forward everything unchanged by default, rewrite only what you
 choose. A man-in-the-middle rather than a shouted contradiction.
