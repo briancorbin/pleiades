@@ -1,7 +1,79 @@
 import XCTest
 @testable import Alcyone
+import Electra
 import Maia
 import Sterope
+
+/// A source that isn't connected yet, then is — the shape of a BLE dongle
+/// while it scans, connects and discovers services.
+final class LateSource: TelemetrySource, @unchecked Sendable {
+    let car = ElectraCar()
+    let session: ELM327Session
+    let label = "Late source"
+    var isReady = false
+
+    init() {
+        session = ELM327Session(transport: ELM327Emulator(car: car))
+    }
+
+    func tick(dt: Double) async {
+        await car.advance(by: dt)
+    }
+}
+
+/// The app calls `connect()` and `start()` back to back, but BLE takes
+/// seconds. Polling before the adapter can answer used to mark itself
+/// initialized anyway, so setup never ran and the dashboard sat frozen while
+/// looking connected — intermittent, because it was a race.
+@MainActor
+final class AdapterReadinessTests: XCTestCase {
+    func testPollingBeforeTheLinkIsUpDoesNotClaimInitialization() async {
+        let source = LateSource()
+        let model = TelemetryModel(source: source)
+        for _ in 0..<5 {
+            await model.poll(fast: true, slow: true)
+        }
+        XCTAssertFalse(model.isInitialized, "claimed setup on an adapter that never answered")
+        XCTAssertTrue(model.readings.isEmpty)
+    }
+
+    func testItRecoversOnceTheLinkComesUp() async {
+        let source = LateSource()
+        await source.setEngineOn()
+        let model = TelemetryModel(source: source)
+
+        await model.poll(fast: true, slow: true)
+        XCTAssertFalse(model.isInitialized)
+
+        source.isReady = true
+        await model.poll(fast: true, slow: true)
+        XCTAssertTrue(model.isInitialized, "never retried after the link came up")
+        XCTAssertNotNil(model.value(.rpm))
+    }
+
+    func testALostLinkForcesSetupToRunAgain() async {
+        // An ELM327 comes back from a dropout with echo on and no protocol
+        // pinned. Talking to it as if it were still configured yields
+        // garbage, so a drop has to invalidate initialization.
+        let source = LateSource()
+        source.isReady = true
+        let model = TelemetryModel(source: source)
+        await model.poll()
+        XCTAssertTrue(model.isInitialized)
+
+        source.isReady = false
+        await model.poll()
+        XCTAssertFalse(model.isInitialized, "kept talking to an adapter that went away")
+
+        source.isReady = true
+        await model.poll()
+        XCTAssertTrue(model.isInitialized)
+    }
+}
+
+extension LateSource {
+    func setEngineOn() async { await car.startEngine() }
+}
 
 @MainActor
 final class TelemetryModelTests: XCTestCase {

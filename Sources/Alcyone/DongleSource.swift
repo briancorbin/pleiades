@@ -17,6 +17,10 @@ public final class DongleSource: TelemetrySource, @unchecked Sendable {
         session = ELM327Session(transport: transport)
     }
 
+    public var isReady: Bool {
+        transport.state == .ready
+    }
+
     public func connect() {
         transport.connect()
     }

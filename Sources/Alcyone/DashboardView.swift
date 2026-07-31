@@ -124,17 +124,23 @@ public struct DashboardView: View {
     }
 
     private var sourceBadge: some View {
-        Text(model.sourceLabel.uppercased())
-            .font(.system(size: 10, weight: .semibold))
-            .tracking(1.5)
-            .foregroundStyle(bench == nil ? Theme.text : Theme.copper)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .overlay(
-                Capsule().strokeBorder(
-                    (bench == nil ? Theme.text : Theme.copper).opacity(0.4)
-                )
-            )
+        // Until the adapter has answered its setup commands there are no
+        // numbers, and a badge that reads normally over empty gauges is
+        // indistinguishable from a car sitting still. Say which it is.
+        let connecting = !model.isInitialized
+        let tint = connecting ? Theme.textDim : (bench == nil ? Theme.text : Theme.copper)
+        return HStack(spacing: 6) {
+            if connecting {
+                ProgressView().scaleEffect(0.5).frame(width: 10, height: 10)
+            }
+            Text((connecting ? "connecting… \(model.sourceLabel)" : model.sourceLabel).uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.5)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .overlay(Capsule().strokeBorder(tint.opacity(0.4)))
     }
 
     @ViewBuilder

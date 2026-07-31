@@ -14,11 +14,19 @@ public protocol TelemetrySource: Sendable {
     /// ELM327 protocol number to pin at startup, skipping the adapter's slow
     /// automatic search. Nil lets it hunt.
     var pinnedProtocol: Int? { get }
+    /// Whether the transport can carry a command yet.
+    ///
+    /// A simulated adapter always can. A BLE dongle has to scan, connect and
+    /// discover services first — several seconds — and until then every send
+    /// fails instantly rather than waiting.
+    var isReady: Bool { get }
 }
 
 public extension TelemetrySource {
     /// A simulated adapter has no protocol to search for.
     var pinnedProtocol: Int? { nil }
+    /// Nothing to wait for when the car is imaginary.
+    var isReady: Bool { true }
 }
 
 /// The bench source: Electra's fake car behind its fake ELM327.

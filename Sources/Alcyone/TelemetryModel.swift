@@ -40,7 +40,11 @@ public final class TelemetryModel: ObservableObject {
     private let eventStore: DTCEventStore
     private var sterope: SteropeEngine
     private var loop: Task<Void, Never>?
-    private var isInitialized = false
+    /// True once the adapter has actually answered its setup commands — not
+    /// merely once we've tried. Published so the UI can say "connecting"
+    /// instead of showing stale gauges as though they were live.
+    @Published public private(set) var isInitialized = false
+    private var storesLoaded = false
 
     // The Merope pattern in Swift: while the app is connected it keeps its
     // own rolling telemetry ring, so fault events get a pre/post window, not
@@ -147,12 +151,37 @@ public final class TelemetryModel: ObservableObject {
 
     /// One poll cycle. Public so tests can drive the model without the timer.
     public func poll(fast: Bool = true, slow: Bool = false) async {
-        if !isInitialized {
-            try? await source.session.initialize(pinnedProtocol: source.pinnedProtocol)
+        // Local stores don't care whether a car is attached.
+        if !storesLoaded {
             history = await eventStore.all()
             if let ruleStore {
                 sterope = SteropeEngine(rules: await ruleStore.all().alertRules())
             }
+            storesLoaded = true
+        }
+
+        // A dropped link means a new adapter session when it returns: an
+        // ELM327 comes back with echo on and no protocol pinned, so whatever
+        // we configured is gone. Re-run setup rather than talk to it as if
+        // nothing happened.
+        if isInitialized, !source.isReady {
+            isInitialized = false
+        }
+
+        if !isInitialized {
+            // The view calls connect() and start() back to back, but a BLE
+            // dongle needs seconds to scan, connect and discover services.
+            // Until it's ready every send fails instantly — and this used to
+            // mark itself initialized anyway, leaving the adapter permanently
+            // unconfigured while the UI sat there looking connected. That's
+            // the "works sometimes" bug: a race with BLE.
+            guard source.isReady else { return }
+            do {
+                try await source.session.initialize(pinnedProtocol: source.pinnedProtocol)
+            } catch {
+                return // stay uninitialized; the next tick tries again
+            }
+            resetSignalDiscovery()
             isInitialized = true
         }
         await source.tick(dt: 0.1)
