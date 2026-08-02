@@ -39,6 +39,36 @@ enum DIDEnumerator {
         known[module] ?? "unknown"
     }
 
+    /// The pages each module said it has, from `pleiades map`, via the
+    /// registry.
+    ///
+    /// Sweeping a generic page list is how page `23` on the airbag module got
+    /// missed — the default set didn't include it, and `23` is exactly the
+    /// page that module keeps its own business on. Ask each module about the
+    /// pages *it* advertises instead of guessing, and the coverage question
+    /// stops being a guess too.
+    static func advertisedPages(for module: UInt32) -> [UInt8]? {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: Registry.jsonPath)),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let modules = root["modules"] as? [[String: Any]]
+        else { return nil }
+
+        let wanted = String(format: "0x%03X", module)
+        guard let entry = modules.first(where: { ($0["address"] as? String)?.uppercased() == wanted }),
+              let pages = entry["pages"] as? [String]
+        else { return nil }
+
+        // Ranges like "10-16" expand; plain entries pass through.
+        return pages.flatMap { page -> [UInt8] in
+            let parts = page.split(separator: "-")
+            guard let first = UInt8(parts[0], radix: 16) else { return [] }
+            guard parts.count == 2, let last = UInt8(parts[1], radix: 16), last >= first else {
+                return [first]
+            }
+            return Array(first...last)
+        }
+    }
+
     static func run(
         nameHint: String?,
         module: UInt32,

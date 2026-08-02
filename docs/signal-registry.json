@@ -87,7 +87,14 @@
       "name": "Integ. Unit",
       "role": "Body integrated unit — doors, gate, lighting, chimes. Prime suspect for also being the CAN gateway.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "11", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "11",
+        "F1",
+        "FF"
+      ],
       "identifiersAnswering": 191,
       "signals": [
         {
@@ -187,18 +194,76 @@
     {
       "address": "0x788",
       "name": "Airbag System",
-      "role": "Restraints. Most likely home of the seatbelt buckle switches.",
+      "role": "Restraints — seatbelt buckle switches. Spells booleans 01 unbuckled / 02 buckled, unlike 0x75A's 00/FF.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "23", "F1", "FF"],
-      "signals": [],
-      "todo": "Enumerate with belts unbuckled, then buckled. Page 23 is its distinctive one."
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "23",
+        "F1",
+        "FF"
+      ],
+      "signals": [
+        {
+          "did": "0x1046",
+          "name": "Belt driver",
+          "kind": "boolean",
+          "trueValue": "02",
+          "falseValue": "01",
+          "confidence": "candidate",
+          "provenance": "measured",
+          "date": "2026-07-30",
+          "method": "Four captures across belt states. 1046 went 01 to 02 when the driver belt was fastened and stayed there. Reads as the driver belt if the captures were cumulative; a single capture with only the passenger belt fastened settles it.",
+          "evidence": "logs/did-20260730-19{2716,2808,2909,3016}.json"
+        },
+        {
+          "did": "0x1047",
+          "name": "Belt passenger",
+          "kind": "boolean",
+          "trueValue": "02",
+          "falseValue": "01",
+          "confidence": "candidate",
+          "provenance": "measured",
+          "date": "2026-07-30",
+          "method": "Same four captures. 1047 moved one state later than 1046, when the passenger belt was fastened.",
+          "evidence": "logs/did-20260730-19{2716,2808,2909,3016}.json"
+        },
+        {
+          "did": "0x1044",
+          "name": "(unknown — belt-shaped)",
+          "kind": "boolean",
+          "confidence": "unidentified",
+          "provenance": "measured",
+          "date": "2026-07-30",
+          "method": "Sits at 01 alongside the two confirmed buckles and never moved. Same shape, unknown seat.",
+          "evidence": "logs/did-20260730-192716.json"
+        },
+        {
+          "did": "0x1045",
+          "name": "(unknown — belt-shaped)",
+          "kind": "boolean",
+          "confidence": "unidentified",
+          "provenance": "measured",
+          "date": "2026-07-30",
+          "method": "As 0x1044.",
+          "evidence": "logs/did-20260730-192716.json"
+        }
+      ],
+      "todo": "Rear belts never appeared — page 23 is this module's distinctive page and was never swept, because the enumerator defaulted to a generic page list. Sweep it.",
+      "identifiersAnswering": 51
     },
     {
       "address": "0x75B",
       "name": "Tire pressure monitor",
       "role": "TPMS — per-wheel pressures.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "F1"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "F1"
+      ],
       "signals": [],
       "todo": "Enumerate, then let pressure out of one tyre and re-enumerate to map corner to identifier."
     },
@@ -207,7 +272,18 @@
       "name": "Keyless Access & Push Start (C)",
       "role": "Keyless entry, driver side. Knows door and gate state for locking logic.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "11", "12", "13", "20", "30", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "11",
+        "12",
+        "13",
+        "20",
+        "30",
+        "F1",
+        "FF"
+      ],
       "signals": []
     },
     {
@@ -215,7 +291,18 @@
       "name": "Keyless Access & Push Start (P)",
       "role": "Keyless entry, passenger side.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "11", "12", "13", "20", "30", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "11",
+        "12",
+        "13",
+        "20",
+        "30",
+        "F1",
+        "FF"
+      ],
       "signals": []
     },
     {
@@ -223,7 +310,22 @@
       "name": "2.5 DOHC",
       "role": "Engine control module. Answers the standard mode-01 PID set and holds the VIN at F190.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "11", "12", "13", "20", "30", "74", "75", "76", "77", "F1", "F4"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "11",
+        "12",
+        "13",
+        "20",
+        "30",
+        "74",
+        "75",
+        "76",
+        "77",
+        "F1",
+        "F4"
+      ],
       "signals": [],
       "note": "Its 0x01xx page is 24 identifiers of mostly FF placeholders."
     },
@@ -240,14 +342,37 @@
       "name": "EyeSight",
       "role": "Driver assistance cameras. By far the richest module — 92 pages.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10-16", "20-2E", "30-39", "40-49", "4A", "50-5F", "60-6F", "70-7C", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10-16",
+        "20-2E",
+        "30-39",
+        "40-49",
+        "4A",
+        "50-5F",
+        "60-6F",
+        "70-7C",
+        "F1",
+        "FF"
+      ],
       "signals": []
     },
     {
       "address": "0x71F",
       "name": "Electric Brake Booster",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "30", "31", "32", "33", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "30",
+        "31",
+        "32",
+        "33",
+        "F1",
+        "FF"
+      ],
       "signals": []
     },
     {
@@ -255,7 +380,13 @@
       "name": "RADAR ASSY B&S LH",
       "role": "Blind-spot radar, left.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "F1",
+        "FF"
+      ],
       "signals": []
     },
     {
@@ -263,7 +394,13 @@
       "name": "RADAR ASSY B&S RH",
       "role": "Blind-spot radar, right.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "F1",
+        "FF"
+      ],
       "signals": []
     },
     {
@@ -271,7 +408,15 @@
       "name": "Data Communication Module",
       "role": "Telematics.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "11", "12", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "11",
+        "12",
+        "F1",
+        "FF"
+      ],
       "signals": []
     },
     {
@@ -279,7 +424,13 @@
       "name": "Sonar system",
       "role": "Parking sensors.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "F1",
+        "FF"
+      ],
       "signals": []
     },
     {
@@ -287,7 +438,14 @@
       "name": "VDC/Parking Brake System",
       "role": "Stability control and electronic parking brake.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "20", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "20",
+        "F1",
+        "FF"
+      ],
       "signals": []
     },
     {
@@ -295,7 +453,13 @@
       "name": "MFD",
       "role": "Multi-function display.",
       "nameProvenance": "measured",
-      "pages": ["01", "02", "10", "F1", "FF"],
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "F1",
+        "FF"
+      ],
       "signals": []
     },
     {
@@ -303,7 +467,14 @@
       "name": "(declined to answer F197)",
       "role": "Unknown. The only module that would not give a name.",
       "nameProvenance": "measured",
-      "pages": ["02", "03", "10", "A0", "F1", "FF"],
+      "pages": [
+        "02",
+        "03",
+        "10",
+        "A0",
+        "F1",
+        "FF"
+      ],
       "signals": [],
       "todo": "Try F187 (part number) or F18C (serial) to identify it. Page A0 is unique to this module."
     }
@@ -316,8 +487,16 @@
       "provenance": "community",
       "source": "opendbc",
       "signals": [
-        "DOOR_OPEN_FL", "DOOR_OPEN_FR", "DOOR_OPEN_RL", "DOOR_OPEN_RR",
-        "DOOR_OPEN_TRUNK", "BRAKE", "LOWBEAM", "HIGHBEAM", "FOG_LIGHTS", "WIPERS"
+        "DOOR_OPEN_FL",
+        "DOOR_OPEN_FR",
+        "DOOR_OPEN_RL",
+        "DOOR_OPEN_RR",
+        "DOOR_OPEN_TRUNK",
+        "BRAKE",
+        "LOWBEAM",
+        "HIGHBEAM",
+        "FOG_LIGHTS",
+        "WIPERS"
       ],
       "note": "DOOR_OPEN_TRUNK is bit 36 — the broadcast counterpart of our measured 22 104E. Cross-checking the two is a free validation of both."
     },
@@ -327,7 +506,14 @@
       "bus": "main / powertrain CAN",
       "provenance": "community",
       "source": "opendbc",
-      "signals": ["SEATBELT_FL", "LEFT_BLINKER", "RIGHT_BLINKER", "UNITS", "ICY_ROAD", "STOP_START"]
+      "signals": [
+        "SEATBELT_FL",
+        "LEFT_BLINKER",
+        "RIGHT_BLINKER",
+        "UNITS",
+        "ICY_ROAD",
+        "STOP_START"
+      ]
     },
     {
       "canID": "0x040",
@@ -335,7 +521,12 @@
       "bus": "main / powertrain CAN",
       "provenance": "community",
       "source": "opendbc",
-      "signals": ["Engine_RPM", "Throttle_Pedal", "Throttle_Cruise", "Neutral"]
+      "signals": [
+        "Engine_RPM",
+        "Throttle_Pedal",
+        "Throttle_Cruise",
+        "Neutral"
+      ]
     },
     {
       "canID": "0x13A",
@@ -343,23 +534,66 @@
       "bus": "main / powertrain CAN",
       "provenance": "community",
       "source": "opendbc",
-      "signals": ["FL", "FR", "RL", "RR"]
+      "signals": [
+        "FL",
+        "FR",
+        "RL",
+        "RR"
+      ]
     }
   ],
   "standardServices": [
-    { "service": "0x01", "name": "Current data (PIDs)", "provenance": "standard", "note": "57 supported on this car; 20 in Maia's catalog. Appendix A of architecture.md." },
-    { "service": "0x02", "name": "Freeze frame", "provenance": "standard" },
-    { "service": "0x03", "name": "Stored trouble codes", "provenance": "standard" },
-    { "service": "0x04", "name": "Clear codes", "provenance": "standard" },
-    { "service": "0x09", "name": "Vehicle info (VIN)", "provenance": "standard" },
-    { "service": "0x22", "name": "ReadDataByIdentifier", "provenance": "standard", "note": "The service is standard; every identifier behind it on this car is manufacturer-private and unpublished." }
+    {
+      "service": "0x01",
+      "name": "Current data (PIDs)",
+      "provenance": "standard",
+      "note": "57 supported on this car; 20 in Maia's catalog. Appendix A of architecture.md."
+    },
+    {
+      "service": "0x02",
+      "name": "Freeze frame",
+      "provenance": "standard"
+    },
+    {
+      "service": "0x03",
+      "name": "Stored trouble codes",
+      "provenance": "standard"
+    },
+    {
+      "service": "0x04",
+      "name": "Clear codes",
+      "provenance": "standard"
+    },
+    {
+      "service": "0x09",
+      "name": "Vehicle info (VIN)",
+      "provenance": "standard"
+    },
+    {
+      "service": "0x22",
+      "name": "ReadDataByIdentifier",
+      "provenance": "standard",
+      "note": "The service is standard; every identifier behind it on this car is manufacturer-private and unpublished."
+    }
   ],
   "openQuestions": [
     {
       "question": "Is the instrument cluster on the same bus as 0x75A?",
       "whyItMatters": "Decides whether chime input interception is a mirror-shroud job or a dash teardown. Cutting at the gateway does nothing if the BIU and cluster share a bus, because that traffic never crosses it.",
       "howToAnswer": "Back-probe CAN H/L at the EyeSight connector and watch for cluster-sourced frames — odometer, warning state, unit preference.",
-      "blocks": ["route 3b install location"]
+      "blocks": [
+        "route 3b install location"
+      ]
+    },
+    {
+      "question": "Were the belt captures cumulative or isolated?",
+      "whyItMatters": "Decides whether 0x1046 is the driver belt or an aggregate. It is the only thing keeping the two belt signals at candidate instead of confirmed.",
+      "howToAnswer": "One enumeration of 0x788 with ONLY the passenger belt fastened. If 0x1046 reads 01, it is the driver belt."
+    },
+    {
+      "question": "Where are the rear seatbelts?",
+      "whyItMatters": "Fastening the rear driver belt moved nothing on the pages swept.",
+      "howToAnswer": "Sweep page 23 on 0x788 — its distinctive page, and never yet enumerated."
     },
     {
       "question": "Is 0x75A also the CAN gateway?",
@@ -416,6 +650,13 @@
       "provenance": "measured",
       "date": "2026-07-30",
       "consequence": "A decoder testing `== 1` reads every open tailgate as closed."
+    },
+    {
+      "name": "Boolean encoding is per-module, not per-car",
+      "provenance": "measured",
+      "date": "2026-07-30",
+      "detail": "0x75A answers latches 00 shut / FF open. 0x788 answers buckles 01 unbuckled / 02 buckled.",
+      "consequence": "A 'non-zero means true' decoder reports every unfastened seatbelt as fastened. Encoding is declared per signal."
     }
   ]
 }

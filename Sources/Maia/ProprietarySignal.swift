@@ -6,39 +6,55 @@
 /// enumerating a module either side of a physical change and diffing. See
 /// `docs/design/did-discovery.md` for the method and
 /// `Tests/MaiaTests/DIDScanTests.swift` for the captured evidence.
+/// How a module spells a value.
+///
+/// **This is not consistent across the car**, which is the kind of thing you
+/// only learn by measuring two modules. The body integrated unit answers its
+/// latches `00` shut and `FF` open, so "non-zero" is the test. The airbag
+/// module answers its buckles `01` unbuckled and `02` buckled — where
+/// "non-zero" would report every unfastened seatbelt as fastened.
+public enum SignalEncoding: Sendable, Hashable {
+    /// True when any byte is non-zero. The `00`/`FF` convention.
+    case nonZero
+    /// True only for this exact value. The `01`/`02` convention.
+    case equals(UInt8)
+    /// A big-endian integer divided by this. Merope encodes at one decimal.
+    case scaled(Double)
+}
+
 public struct ProprietarySignal: Sendable, Hashable {
     public let id: UInt16
     public let name: String
     public let unit: String
-    /// A few of these are really booleans. The car answers them `FF` for true
-    /// and `00` for false — not `01`, which is why "non-zero" is the test.
-    public let isBoolean: Bool
+    /// How to turn this module's bytes into a number — see `SignalEncoding`.
+    public let encoding: SignalEncoding
+    /// Whether this reads as a yes/no rather than a quantity.
+    public var isBoolean: Bool {
+        if case .scaled = encoding { return false }
+        return true
+    }
     /// Which module answers. A functional request draws replies from a dozen
     /// of them, and the header is the only thing that says which is ours.
     /// Nil means we haven't identified the owner yet.
     public let module: UInt32?
-    /// Divisor for integer signals. Merope encodes at one decimal place.
-    public let scale: Double
-    /// True once the identifier has been confirmed against the real car.
-    /// False means it's Merope's own number, useful on the bench and not yet
-    /// something the Forester would recognise.
+    /// True once the identifier *and* its meaning have been confirmed against
+    /// the real car. False covers both Merope's own invented numbers and real
+    /// identifiers whose exact meaning is still a hypothesis.
     public let verified: Bool
 
     public init(
         id: UInt16,
         name: String,
         unit: String = "",
-        isBoolean: Bool = false,
+        encoding: SignalEncoding = .scaled(10),
         module: UInt32? = nil,
-        scale: Double = 10,
         verified: Bool = false
     ) {
         self.id = id
         self.name = name
         self.unit = unit
-        self.isBoolean = isBoolean
+        self.encoding = encoding
         self.module = module
-        self.scale = scale
         self.verified = verified
     }
 
@@ -52,12 +68,16 @@ public struct ProprietarySignal: Sendable, Hashable {
     /// Width varies: the car answers the latch signals with a single byte,
     /// while Merope encodes its own signals as a scaled uint16. Both work.
     public func decode(_ bytes: [UInt8]) -> Double {
-        guard !bytes.isEmpty else { return 0 }
-        if isBoolean {
+        guard let first = bytes.first else { return 0 }
+        switch encoding {
+        case .nonZero:
             return bytes.contains { $0 != 0 } ? 1 : 0
+        case .equals(let wanted):
+            return first == wanted ? 1 : 0
+        case .scaled(let divisor):
+            let value = bytes.prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
+            return Double(value) / divisor
         }
-        let value = bytes.prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
-        return Double(value) / scale
     }
 }
 
@@ -73,19 +93,19 @@ public extension ProprietarySignal {
     /// `00` with it shut, and unmoved when the passenger door opens — which
     /// is what separates it from `anyOpening` below.
     static let gate = ProprietarySignal(
-        id: 0x104E, name: "Rear gate", isBoolean: true,
+        id: 0x104E, name: "Rear gate", encoding: .nonZero,
         module: integUnit, verified: true
     )
     /// Front passenger door. Same evidence, opposite state.
     static let doorFrontRight = ProprietarySignal(
-        id: 0x104B, name: "Door FR", isBoolean: true,
+        id: 0x104B, name: "Door FR", encoding: .nonZero,
         module: integUnit, verified: true
     )
     /// Goes `FF` when *anything* is open. Useful, but not the gate — it was
     /// one of three identifiers that moved on the first diff, and the
     /// passenger-door test is what told them apart.
     static let anyOpening = ProprietarySignal(
-        id: 0x1073, name: "Any opening", isBoolean: true,
+        id: 0x1073, name: "Any opening", encoding: .nonZero,
         module: integUnit, verified: true
     )
 
@@ -93,7 +113,7 @@ public extension ProprietarySignal {
     /// `1117` tracked the gate and `1116` the passenger door exactly.
     /// Kept as a cross-check, not polled.
     static let gateMirror = ProprietarySignal(
-        id: 0x1117, name: "Rear gate (page 11)", isBoolean: true,
+        id: 0x1117, name: "Rear gate (page 11)", encoding: .nonZero,
         module: integUnit, verified: true
     )
 
@@ -101,13 +121,38 @@ public extension ProprietarySignal {
     // passenger door was open. Almost certainly the other three doors —
     // but "almost certainly" isn't measured, so they say so.
     static let doorFrontLeft = ProprietarySignal(
-        id: 0x104A, name: "Door FL", isBoolean: true, module: integUnit
+        id: 0x104A, name: "Door FL", encoding: .nonZero, module: integUnit
     )
     static let doorRearLeft = ProprietarySignal(
-        id: 0x104C, name: "Door RL", isBoolean: true, module: integUnit
+        id: 0x104C, name: "Door RL", encoding: .nonZero, module: integUnit
     )
     static let doorRearRight = ProprietarySignal(
-        id: 0x104D, name: "Door RR", isBoolean: true, module: integUnit
+        id: 0x104D, name: "Door RR", encoding: .nonZero, module: integUnit
+    )
+}
+
+// MARK: - Merope's own identifiers
+
+/// Module `0x788` — "Airbag System", which owns the buckle switches.
+///
+/// **It spells booleans differently from the body module:** `01` unbuckled,
+/// `02` buckled, where `0x75A` uses `00`/`FF`. Decoding these as "non-zero
+/// means true" reports every unfastened belt as fastened, so the encoding is
+/// declared per signal rather than assumed per project.
+///
+/// Not `verified` yet: the four captures were taken buckling belts one after
+/// another, and if each stayed fastened as the next went on, `1046` is the
+/// driver and `1047` the passenger. If they were done in isolation the
+/// reading is different. One capture with *only* the passenger belt fastened
+/// settles it.
+public extension ProprietarySignal {
+    static let airbagModule: UInt32 = 0x788
+
+    static let beltDriver = ProprietarySignal(
+        id: 0x1046, name: "Belt driver", encoding: .equals(0x02), module: airbagModule
+    )
+    static let beltPassenger = ProprietarySignal(
+        id: 0x1047, name: "Belt passenger", encoding: .equals(0x02), module: airbagModule
     )
 }
 
@@ -115,19 +160,11 @@ public extension ProprietarySignal {
 
 /// Not the car's numbers. These are Merope's, in a range the Forester was
 /// never seen answering (`0xFExx`), so the bench can carry signals we haven't
-/// found on the real car yet. Belts most likely live on `0x788` (Airbag
-/// System) and TPMS on `0x75B` (Tire pressure monitor) — enumerate those
-/// modules and these get replaced by measurements.
+/// found on the real car yet. TPMS most likely lives on `0x75B` (Tire
+/// pressure monitor) — enumerate it and these get replaced by measurements.
 public extension ProprietarySignal {
-    static let airbagModule: UInt32 = 0x788
     static let tpmsModule: UInt32 = 0x75B
 
-    static let beltDriver = ProprietarySignal(
-        id: 0xFE10, name: "Belt driver", isBoolean: true, module: airbagModule
-    )
-    static let beltPassenger = ProprietarySignal(
-        id: 0xFE11, name: "Belt passenger", isBoolean: true, module: airbagModule
-    )
     static let gear = ProprietarySignal(id: 0xFE20, name: "Gear")
     static let ignition = ProprietarySignal(id: 0xFE21, name: "Ignition")
     static let tpmsFrontLeft = ProprietarySignal(

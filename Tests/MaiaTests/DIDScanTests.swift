@@ -361,6 +361,31 @@ final class MeasuredSignalTests: XCTestCase {
         XCTAssertEqual(ProprietarySignal.gate.decode([0x00]), 0)
     }
 
+    func testTheAirbagModuleSpellsBooleansDifferently() {
+        // 0x788 answers 01 unbuckled / 02 buckled, where 0x75A uses 00/FF.
+        // A "non-zero means true" decoder reads every unfastened belt as
+        // fastened — which is the wrong way round for a safety indicator.
+        XCTAssertEqual(ProprietarySignal.beltDriver.decode([0x01]), 0, "unbuckled read as buckled")
+        XCTAssertEqual(ProprietarySignal.beltDriver.decode([0x02]), 1)
+        XCTAssertEqual(ProprietarySignal.beltPassenger.decode([0x01]), 0)
+        XCTAssertEqual(ProprietarySignal.beltPassenger.decode([0x02]), 1)
+    }
+
+    func testTheTwoConventionsCannotBeConfused() {
+        // Same byte, opposite meaning, depending on which module said it.
+        XCTAssertEqual(ProprietarySignal.gate.decode([0x01]), 1, "non-zero is open on 75A")
+        XCTAssertEqual(ProprietarySignal.beltDriver.decode([0x01]), 0, "01 is unbuckled on 788")
+    }
+
+    func testBeltsCarryTheirRealIdentifiers() {
+        XCTAssertEqual(ProprietarySignal.beltDriver.id, 0x1046)
+        XCTAssertEqual(ProprietarySignal.beltPassenger.id, 0x1047)
+        XCTAssertEqual(ProprietarySignal.beltDriver.module, 0x788)
+        // Still candidates: which is driver and which is passenger depends on
+        // whether the captures were cumulative.
+        XCTAssertFalse(ProprietarySignal.beltDriver.verified)
+    }
+
     func testMeropesTwoByteEncodingStillDecodes() {
         // The bench sends a scaled uint16; the car sends one byte. Both work.
         XCTAssertEqual(ProprietarySignal.gate.decode([0x00, 0x01]), 1)

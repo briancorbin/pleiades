@@ -35,7 +35,7 @@ open — those are very different kinds of true, so every row says which.
 | Address | Name | Role | Pages | Signals |
 |---|---|---|---|---|
 | `0x75A` | Integ. Unit | Body integrated unit — doors, gate, lighting, chimes. Prime suspect for also being the CAN gateway. | `01 02 10 11 F1 FF` | 5 named / 191 answer |
-| `0x788` | Airbag System | Restraints. Most likely home of the seatbelt buckle switches. | `01 02 10 23 F1 FF` | — |
+| `0x788` | Airbag System | Restraints — seatbelt buckle switches. Spells booleans 01 unbuckled / 02 buckled, unlike 0x75A's 00/FF. | `01 02 10 23 F1 FF` | 51 answer, none named |
 | `0x75B` | Tire pressure monitor | TPMS — per-wheel pressures. | `01 02 10 F1` | — |
 | `0x7BC` | Keyless Access & Push Start (C) | Keyless entry, driver side. Knows door and gate state for locking logic. | `01 02 10 11 12 13 20 30 F1 FF` | — |
 | `0x7C9` | Keyless Access & Push Start (P) | Keyless entry, passenger side. | `01 02 10 11 12 13 20 30 F1 FF` | — |
@@ -67,8 +67,14 @@ open — those are very different kinds of true, so every row says which.
 
 ### `0x788` — Airbag System
 
-> **Not yet explored.** Enumerate with belts unbuckled, then buckled. Page 23 is its distinctive one.
+> **Not yet explored.** Rear belts never appeared — page 23 is this module's distinctive page and was never swept, because the enumerator defaulted to a generic page list. Sweep it.
 
+| Identifier | Signal | Confidence | Provenance | How we know |
+|---|---|---|---|---|
+| `0x1046` | Belt driver — true = `02` | `candidate` | `measured` | Four captures across belt states. 1046 went 01 to 02 when the driver belt was fastened and stayed there. Reads as the driver belt if the captures were cumulative; a single capture with only the passenger belt fastened settles it. (`logs/did-20260730-19{2716,2808,2909,3016}.json`) |
+| `0x1047` | Belt passenger — true = `02` | `candidate` | `measured` | Same four captures. 1047 moved one state later than 1046, when the passenger belt was fastened. (`logs/did-20260730-19{2716,2808,2909,3016}.json`) |
+| `0x1044` | (unknown — belt-shaped) | `unidentified` | `measured` | Sits at 01 alongside the two confirmed buckles and never moved. Same shape, unknown seat. (`logs/did-20260730-192716.json`) |
+| `0x1045` | (unknown — belt-shaped) | `unidentified` | `measured` | As 0x1044. (`logs/did-20260730-192716.json`) |
 
 ### `0x75B` — Tire pressure monitor
 
@@ -88,6 +94,16 @@ The work queue. Each of these is answerable with the tools already built.
 
 - *Why it matters:* Decides whether chime input interception is a mirror-shroud job or a dash teardown. Cutting at the gateway does nothing if the BIU and cluster share a bus, because that traffic never crosses it.
 - *How to answer:* Back-probe CAN H/L at the EyeSight connector and watch for cluster-sourced frames — odometer, warning state, unit preference.
+
+**Were the belt captures cumulative or isolated?**
+
+- *Why it matters:* Decides whether 0x1046 is the driver belt or an aggregate. It is the only thing keeping the two belt signals at candidate instead of confirmed.
+- *How to answer:* One enumeration of 0x788 with ONLY the passenger belt fastened. If 0x1046 reads 01, it is the driver belt.
+
+**Where are the rear seatbelts?**
+
+- *Why it matters:* Fastening the rear driver belt moved nothing on the pages swept.
+- *How to answer:* Sweep page 23 on 0x788 — its distinctive page, and never yet enumerated.
 
 **Is 0x75A also the CAN gateway?**
 
@@ -170,6 +186,12 @@ The legislated OBD response window. Every body module is outside it and gets dis
 **This car answers FF for true, not 01** — `measured`, 2026-07-30
 
 > A decoder testing `== 1` reads every open tailgate as closed.
+
+**Boolean encoding is per-module, not per-car** — `measured`, 2026-07-30
+
+0x75A answers latches 00 shut / FF open. 0x788 answers buckles 01 unbuckled / 02 buckled.
+
+> A 'non-zero means true' decoder reports every unfastened seatbelt as fastened. Encoding is declared per signal.
 
 
 ## Sources

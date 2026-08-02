@@ -70,8 +70,12 @@ struct Pleiades {
                     print("usage: pleiades enum --module 75A [--pages 01,02,10,11] [--tag X]")
                     exit(2)
                 }
+                // Default to the pages this module told us it has, not a
+                // generic list — that guess is what missed page 23 on the
+                // airbag module, which is where its own data lives.
                 let pages = value(of: "--pages", in: rest)
                     .map { $0.split(separator: ",").compactMap { UInt8($0, radix: 16) } }
+                    ?? DIDEnumerator.advertisedPages(for: module)
                     ?? [0x01, 0x02, 0x10, 0x11, 0x12, 0x13, 0x20, 0x30]
                 try await DIDEnumerator.run(
                     nameHint: value(of: "--name", in: rest),
