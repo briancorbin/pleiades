@@ -3,206 +3,164 @@ import XCTest
 
 /// The registry is only worth having if it can't quietly go wrong.
 ///
-/// The bundled `signal-registry.json` records what this car exposes and how
-/// we know it.
-/// `ProprietarySignal.swift` records what the app actually asks for. Those are
-/// two statements of the same fact, and two copies of a fact drift — silently,
-/// one stale line at a time, until nobody trusts either.
-///
-/// So they get compared. Change the gate's identifier in one place and forget
-/// the other, and this fails naming both.
+/// It records what a platform exposes and how anybody knows;
+/// `ProprietarySignal` records what the app actually asks for. Two statements
+/// of one fact drift — silently, a line at a time, until nobody trusts either.
+/// So they get compared, and changing one without the other fails the bench.
 final class RegistryDriftTests: XCTestCase {
-    /// Located from this file rather than the working directory, so it works
-    /// under `swift test` and from Xcode alike.
-    private static var registryURL: URL {
-        URL(fileURLWithPath: #filePath)          // Tests/MaiaTests/ThisFile.swift
-            .deletingLastPathComponent()          // Tests/MaiaTests
-            .deletingLastPathComponent()          // Tests
-            .deletingLastPathComponent()          // repo root
-            .appendingPathComponent("Sources/Maia/Resources/signal-registry.json")
+    private func registry() throws -> VehicleRegistry {
+        try XCTUnwrap(VehicleRegistry.shared, "no registry bundled")
     }
 
-    private struct Entry {
-        let did: UInt16
-        let name: String
-        let module: UInt32?
-        let confidence: String
-    }
-
-    private func loadRegistry() throws -> [Entry] {
-        let data = try Data(contentsOf: Self.registryURL)
-        let root = try XCTUnwrap(
-            try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            "registry is not a JSON object"
-        )
-        let modules = try XCTUnwrap(root["modules"] as? [[String: Any]], "no modules array")
-
-        return modules.flatMap { module -> [Entry] in
-            let address = (module["address"] as? String).flatMap {
-                UInt32($0.replacingOccurrences(of: "0x", with: ""), radix: 16)
-            }
-            return ((module["signals"] as? [[String: Any]]) ?? []).compactMap { signal in
-                guard let didText = signal["did"] as? String,
-                      let did = UInt16(didText.replacingOccurrences(of: "0x", with: ""), radix: 16)
-                else { return nil }
-                return Entry(
-                    did: did,
-                    name: (signal["name"] as? String) ?? "",
-                    module: address,
-                    confidence: (signal["confidence"] as? String) ?? ""
-                )
-            }
-        }
-    }
-
-    func testRegistryIsPresentAndParses() throws {
-        let entries = try loadRegistry()
-        XCTAssertFalse(entries.isEmpty, "the registry lists no signals at all")
-    }
-
-    func testEveryVerifiedSignalInCodeIsRecordedAsConfirmed() throws {
-        let registry = try loadRegistry()
+    func testEveryVerifiedSignalInCodeIsConfirmedInTheRegistry() throws {
+        let registry = try registry()
         for signal in ProprietarySignal.all where signal.verified {
-            guard let entry = registry.first(where: { $0.did == signal.id }) else {
-                XCTFail("""
-                \(signal.name) (\(String(format: "0x%04X", signal.id))) is marked verified in \
-                ProprietarySignal.swift but is missing from the signal registry
-                """)
+            guard let found = registry.signal(signal.id) else {
+                XCTFail("\(signal.name) is verified in code but absent from the registry")
                 continue
             }
             XCTAssertEqual(
-                entry.confidence, "confirmed",
-                "\(signal.name) is verified in code but '\(entry.confidence)' in the registry"
+                found.signal.confidence, .confirmed,
+                "\(signal.name) is verified in code but '\(found.signal.confidence.rawValue)' in the registry"
             )
-            XCTAssertEqual(
-                entry.module, signal.module,
-                "\(signal.name) disagrees about which module owns it"
-            )
+            XCTAssertEqual(found.module.address, signal.module, "\(signal.name) disagrees about its module")
         }
     }
 
-    func testNothingIsConfirmedInTheRegistryWithoutBeingVerifiedInCode() throws {
-        // Except the page-11 mirrors, which are measured but deliberately not
-        // polled — they exist as a cross-check on the page-10 signals.
+    func testNothingIsConfirmedWithoutBeingVerifiedInCode() throws {
+        // The page-11 mirrors are measured but deliberately not polled — they
+        // exist as a cross-check on their page-10 twins.
         let mirrors: Set<UInt16> = [0x1116, 0x1117]
         let verified = Set(ProprietarySignal.all.filter(\.verified).map(\.id))
-
-        for entry in try loadRegistry() where entry.confidence == "confirmed" {
-            guard !mirrors.contains(entry.did) else { continue }
-            XCTAssertTrue(
-                verified.contains(entry.did),
-                """
-                \(entry.name) (\(String(format: "0x%04X", entry.did))) is confirmed in the registry \
-                but not marked verified in ProprietarySignal.swift
-                """
-            )
-        }
-    }
-
-    func testCandidatesInCodeAreNotClaimedAsConfirmed() throws {
-        // The three unmeasured doors. If one gets promoted in code, the
-        // registry has to gain the evidence at the same time.
-        let registry = try loadRegistry()
-        for signal in ProprietarySignal.all where !signal.verified {
-            guard let entry = registry.first(where: { $0.did == signal.id }) else { continue }
-            XCTAssertNotEqual(
-                entry.confidence, "confirmed",
-                "\(signal.name) is confirmed in the registry but unverified in code"
-            )
-        }
-    }
-
-    func testEveryConfirmedSignalCitesItsEvidence() throws {
-        // A measurement with no log file behind it is a memory, not a record.
-        let data = try Data(contentsOf: Self.registryURL)
-        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let modules = try XCTUnwrap(root["modules"] as? [[String: Any]])
-
-        for module in modules {
-            for signal in (module["signals"] as? [[String: Any]]) ?? [] {
-                guard (signal["confidence"] as? String) == "confirmed" else { continue }
-                let name = (signal["name"] as? String) ?? "?"
-                XCTAssertEqual(
-                    signal["provenance"] as? String, "measured",
-                    "\(name) is confirmed but not marked as measured"
+        for module in try registry().modules {
+            for signal in module.signals where signal.confidence == .confirmed {
+                guard !mirrors.contains(signal.did) else { continue }
+                XCTAssertTrue(
+                    verified.contains(signal.did),
+                    "\(signal.name) is confirmed in the registry but unverified in code"
                 )
-                XCTAssertNotNil(signal["date"], "\(name) is confirmed with no date")
-                XCTAssertNotNil(signal["evidence"], "\(name) is confirmed with no log file cited")
             }
         }
     }
 
-    func testCandidatesSayHowToResolveThemselves() throws {
-        let data = try Data(contentsOf: Self.registryURL)
-        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let modules = try XCTUnwrap(root["modules"] as? [[String: Any]])
-
-        for module in modules {
-            for signal in (module["signals"] as? [[String: Any]]) ?? [] {
-                guard (signal["confidence"] as? String) == "candidate" else { continue }
-                let name = (signal["name"] as? String) ?? "?"
-                let hasPlan = signal["method"] != nil || signal["note"] != nil
-                XCTAssertTrue(hasPlan, "\(name) is a candidate with no way to confirm or kill it")
+    func testEncodingsAgreeBetweenRegistryAndCode() throws {
+        // 0x75A says 00/FF, 0x788 says 01/02. Getting this wrong reports
+        // every unfastened seatbelt as fastened.
+        for module in try registry().modules {
+            for signal in module.signals {
+                guard let code = ProprietarySignal.all.first(where: { $0.id == signal.did }) else { continue }
+                switch (signal.encoding, code.encoding) {
+                case (.boolean(let registryTrue, _), .equals(let codeTrue)):
+                    XCTAssertEqual(registryTrue, codeTrue, "\(signal.name) true-value disagrees")
+                case (.boolean, .nonZero), (.raw, _), (.scaled, .scaled):
+                    break // compatible
+                default:
+                    XCTFail("\(signal.name): registry \(signal.encoding) vs code \(code.encoding)")
+                }
             }
-        }
-    }
-
-    func testOpenQuestionsAreActionable() throws {
-        let data = try Data(contentsOf: Self.registryURL)
-        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let questions = try XCTUnwrap(root["openQuestions"] as? [[String: Any]], "no open questions")
-
-        XCTAssertFalse(questions.isEmpty)
-        for question in questions {
-            let text = (question["question"] as? String) ?? "?"
-            XCTAssertNotNil(
-                question["howToAnswer"],
-                "\"\(text)\" is recorded with no way to answer it — that's a complaint, not a work item"
-            )
         }
     }
 }
 
-/// The registry is now a type the app renders, not just a document — so the
-/// parse has to hold up, not merely the file.
-final class VehicleRegistryTests: XCTestCase {
-    func testBundledRegistryLoads() throws {
-        let registry = try XCTUnwrap(VehicleRegistry.shared, "registry missing from the bundle")
-        XCTAssertFalse(registry.modules.isEmpty)
-        XCTAssertEqual(registry.vehicle.year, 2022)
+/// The format's own rules, enforced rather than documented.
+final class RegistryFormatTests: XCTestCase {
+    private func registry() throws -> VehicleRegistry {
+        try XCTUnwrap(VehicleRegistry.shared)
     }
 
-    func testTheGateIsFindableByIdentifier() throws {
-        let registry = try XCTUnwrap(VehicleRegistry.shared)
-        let found = try XCTUnwrap(registry.signal(ProprietarySignal.gate.id))
-        XCTAssertEqual(found.module.address, 0x75A)
-        XCTAssertEqual(found.signal.confidence, .confirmed)
-        XCTAssertTrue(found.signal.isPollable)
-    }
-
-    func testUnknownCountIsWhatIsLeftToFind() throws {
-        let registry = try XCTUnwrap(VehicleRegistry.shared)
-        // Identifiers that answer, minus the ones we've named. If this ever
-        // goes negative the arithmetic is wrong somewhere.
-        XCTAssertGreaterThan(registry.unknownCount, 0)
-        XCTAssertLessThanOrEqual(registry.unknownCount, registry.totalAnswering)
-    }
-
-    func testSignalsSortByConfidenceSoTheKnownOnesReadFirst() throws {
-        let registry = try XCTUnwrap(VehicleRegistry.shared)
-        for module in registry.modules {
-            let order = module.signals.map(\.confidence)
-            XCTAssertEqual(order, order.sorted(), "\(module.label) signals are out of order")
+    func testWriteAccessRequiresConfirmedConfidence() throws {
+        // Reading a misidentified identifier costs a number you misinterpret.
+        // Writing to one can misconfigure a restraint system on a stranger's
+        // car. "I think this is a seatbelt" is not a good enough basis for 2E.
+        for module in try registry().modules {
+            for signal in module.signals where signal.access.write {
+                XCTAssertEqual(
+                    signal.confidence, .confirmed,
+                    "\(module.label) \(signal.command) is writable at confidence '\(signal.confidence.rawValue)'"
+                )
+            }
         }
     }
 
-    func testOnlyPollableSignalsClaimToBePollable() throws {
-        let registry = try XCTUnwrap(VehicleRegistry.shared)
-        let catalogue = Set(ProprietarySignal.all.map(\.id))
-        for module in registry.modules {
-            for signal in module.signals {
-                XCTAssertEqual(signal.isPollable, catalogue.contains(signal.did), signal.name)
+    func testConfirmedSignalsCiteEvidence() throws {
+        for module in try registry().modules {
+            for signal in module.signals where signal.confidence == .confirmed {
+                let observation = try XCTUnwrap(
+                    signal.firstObservation, "\(signal.name) confirmed with no observation"
+                )
+                XCTAssertFalse(observation.by.isEmpty, "\(signal.name) has an observation with no contributor")
+                XCTAssertNotNil(signal.evidence, "\(signal.name) is confirmed with no log file cited")
             }
+        }
+    }
+
+    func testConfidenceIsDerivedNotAsserted() {
+        func signal(_ observations: [VehicleRegistry.Observation]) -> VehicleRegistry.Signal {
+            VehicleRegistry.Signal(
+                did: 0x104E, name: "x", encoding: .raw,
+                access: .init(read: true, write: false, securityAccess: nil),
+                observations: observations, prediction: nil, note: nil
+            )
+        }
+        func obs(_ by: String, reverted: Bool = false, rejected: Bool = false) -> VehicleRegistry.Observation {
+            .init(by: by, vehicle: nil, date: "2026-07-30", method: nil, evidence: nil,
+                  reverted: reverted, discriminated: [], rejected: rejected)
+        }
+
+        XCTAssertEqual(signal([]).confidence, .unidentified)
+        XCTAssertEqual(signal([obs("a")]).confidence, .candidate)
+        // Seen to change and change back — a measurement, not a correlation.
+        XCTAssertEqual(signal([obs("a", reverted: true)]).confidence, .confirmed)
+        // Or two people on two cars agreeing, which no other vehicle dataset
+        // can express.
+        XCTAssertEqual(signal([obs("a"), obs("b")]).confidence, .confirmed)
+        // One person twice is still one person.
+        XCTAssertEqual(signal([obs("a"), obs("a")]).confidence, .candidate)
+        XCTAssertEqual(signal([obs("a", rejected: true)]).confidence, .rejected)
+    }
+
+    func testPredictionsNeverEarnConfidence() throws {
+        // The three inferred doors: a prediction is not an observation.
+        for module in try registry().modules {
+            for signal in module.signals where signal.observations.isEmpty {
+                XCTAssertEqual(signal.confidence, .unidentified, "\(signal.name) earned confidence without evidence")
+                XCTAssertFalse(signal.access.write)
+            }
+        }
+    }
+
+    func testFingerprintIdentifiesThePlatform() throws {
+        let registry = try registry()
+        let full = Set(registry.platform.fingerprint)
+        XCTAssertEqual(registry.matchScore(full), 1.0, accuracy: 0.001)
+        XCTAssertEqual(VehicleRegistry.match(respondingModules: full)?.platform.id, registry.platform.id)
+
+        // A car missing a couple of optional modules — no blind-spot radar,
+        // say — must still match rather than fall off a cliff.
+        var trimmed = full
+        trimmed.remove(0x74A)
+        trimmed.remove(0x74B)
+        XCTAssertNotNil(VehicleRegistry.match(respondingModules: trimmed), "a trim level failed to match")
+
+        // A completely different car must not.
+        XCTAssertNil(VehicleRegistry.match(respondingModules: [0x7E8, 0x111, 0x222]))
+    }
+
+    func testOpenQuestionsAreActionable() throws {
+        let questions = try registry().openQuestions
+        XCTAssertFalse(questions.isEmpty)
+        for question in questions {
+            XCTAssertNotNil(
+                question.howToAnswer,
+                "\"\(question.question)\" has no way to answer it — that's a complaint, not a work item"
+            )
+        }
+    }
+
+    func testSignalsSortSoTheKnownOnesReadFirst() throws {
+        for module in try registry().modules {
+            let order = module.signals.map(\.confidence)
+            XCTAssertEqual(order, order.sorted(), "\(module.label) signals are out of order")
         }
     }
 }

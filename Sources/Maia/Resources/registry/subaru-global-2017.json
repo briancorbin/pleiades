@@ -1,0 +1,806 @@
+{
+  "schema": "pleiades-registry/1",
+  "platform": {
+    "id": "subaru-global-2017",
+    "name": "Subaru Global Platform",
+    "models": [
+      "Forester 2019-2024",
+      "Crosstrek 2018-2023",
+      "Impreza 2017-2023",
+      "Outback/Legacy 2020-2022"
+    ],
+    "protocol": {
+      "elm327": 6,
+      "description": "ISO 15765-4 (CAN 11-bit, 500 kbit/s) — ELM327 protocol 6"
+    },
+    "fingerprint": {
+      "respondingModules": [
+        "0x75A",
+        "0x788",
+        "0x75B",
+        "0x7BC",
+        "0x7C9",
+        "0x7E8",
+        "0x7E9",
+        "0x78F",
+        "0x71F",
+        "0x74A",
+        "0x74B",
+        "0x77E",
+        "0x78E",
+        "0x7B8",
+        "0x7DD",
+        "0x78B"
+      ],
+      "minimumMatch": 0.8,
+      "note": "Addresses that answer 22 F197. Partial match on purpose — trim levels differ, and a car without blind-spot radar shouldn't fail to match."
+    }
+  },
+  "contributors": [
+    {
+      "id": "briancorbin",
+      "vehicles": [
+        "2022 Forester Wilderness (FB25D)"
+      ]
+    }
+  ],
+  "modules": [
+    {
+      "address": "0x75A",
+      "name": "Integ. Unit",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "11",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 191,
+      "signals": [
+        {
+          "did": "0x104E",
+          "name": "Rear gate",
+          "encoding": {
+            "kind": "boolean",
+            "trueValue": "FF",
+            "falseValue": "00"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [
+            {
+              "by": "briancorbin",
+              "vehicle": "2022 Forester Wilderness",
+              "date": "2026-07-30",
+              "reverted": true,
+              "method": "Enumerated 0x75A three times: gate shut, gate open, passenger door open. 104E moved for the gate and ignored the door.",
+              "evidence": "logs/did-20260730-190933.json, -191135, -191652",
+              "discriminated": [
+                "0x1073",
+                "0x1117"
+              ]
+            }
+          ],
+          "note": "The signal this whole project was started to get."
+        },
+        {
+          "did": "0x104B",
+          "name": "Door front right",
+          "encoding": {
+            "kind": "boolean",
+            "trueValue": "FF",
+            "falseValue": "00"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [
+            {
+              "by": "briancorbin",
+              "vehicle": "2022 Forester Wilderness",
+              "date": "2026-07-30",
+              "reverted": true,
+              "method": "Same three-state diff, inverted: tracked the passenger door and ignored the gate.",
+              "evidence": "logs/did-20260730-191652.json"
+            }
+          ]
+        },
+        {
+          "did": "0x1073",
+          "name": "Any opening",
+          "encoding": {
+            "kind": "boolean",
+            "trueValue": "FF",
+            "falseValue": "00"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [
+            {
+              "by": "briancorbin",
+              "vehicle": "2022 Forester Wilderness",
+              "date": "2026-07-30",
+              "reverted": true,
+              "method": "Went true for both the gate and the passenger door — an aggregate, which is how it was told apart from the specific signals.",
+              "evidence": "logs/did-20260730-191652.json",
+              "discriminated": [
+                "0x104E",
+                "0x1117"
+              ]
+            }
+          ]
+        },
+        {
+          "did": "0x1117",
+          "name": "Rear gate (page 11 mirror)",
+          "encoding": {
+            "kind": "boolean",
+            "trueValue": "FF",
+            "falseValue": "00"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [
+            {
+              "by": "briancorbin",
+              "vehicle": "2022 Forester Wilderness",
+              "date": "2026-07-30",
+              "reverted": true,
+              "method": "Tracked the gate identically to 0x104E across all three states.",
+              "evidence": "logs/did-20260730-191652.json"
+            }
+          ],
+          "note": "Page 0x11 mirrors page 0x10. Kept as a cross-check; not polled."
+        },
+        {
+          "did": "0x1116",
+          "name": "Door front right (page 11 mirror)",
+          "encoding": {
+            "kind": "boolean",
+            "trueValue": "FF",
+            "falseValue": "00"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [
+            {
+              "by": "briancorbin",
+              "vehicle": "2022 Forester Wilderness",
+              "date": "2026-07-30",
+              "reverted": true,
+              "evidence": "logs/did-20260730-191652.json"
+            }
+          ]
+        },
+        {
+          "did": "0x104A",
+          "name": "Door front left",
+          "encoding": {
+            "kind": "boolean",
+            "trueValue": "FF",
+            "falseValue": "00"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [],
+          "note": "Open the driver's door alone and re-enumerate to promote or kill it.",
+          "prediction": "Neighbour of the two confirmed hits; sat at 00 through all three states. Never tested with this door open."
+        },
+        {
+          "did": "0x104C",
+          "name": "Door rear left",
+          "encoding": {
+            "kind": "boolean",
+            "trueValue": "FF",
+            "falseValue": "00"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [],
+          "prediction": "Neighbour of the confirmed hits; 00 throughout."
+        },
+        {
+          "did": "0x104D",
+          "name": "Door rear right",
+          "encoding": {
+            "kind": "boolean",
+            "trueValue": "FF",
+            "falseValue": "00"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [],
+          "prediction": "Neighbour of the confirmed hits; 00 throughout."
+        },
+        {
+          "did": "0x1024",
+          "name": "(unknown — false positive)",
+          "encoding": {
+            "kind": "raw"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [
+            {
+              "by": "briancorbin",
+              "vehicle": "2022 Forester Wilderness",
+              "date": "2026-07-30",
+              "reverted": false,
+              "method": "Moved A6 → A5 on the first diff and looked like a candidate. Across three runs the two-pass volatile filter caught it drifting on its own.",
+              "rejected": true
+            }
+          ],
+          "note": "Recorded so nobody re-investigates it."
+        }
+      ],
+      "role": "Body integrated unit — doors, gate, lighting, chimes. Prime suspect for also being the CAN gateway."
+    },
+    {
+      "address": "0x788",
+      "name": "Airbag System",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "23",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 51,
+      "signals": [
+        {
+          "did": "0x1046",
+          "name": "Belt driver",
+          "encoding": {
+            "kind": "boolean",
+            "trueValue": "02",
+            "falseValue": "01"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [
+            {
+              "by": "briancorbin",
+              "vehicle": "2022 Forester Wilderness",
+              "date": "2026-07-30",
+              "reverted": false,
+              "method": "Four captures across belt states. 1046 went 01 to 02 when the driver belt was fastened and stayed there. Reads as the driver belt if the captures were cumulative; a single capture with only the passenger belt fastened settles it.",
+              "evidence": "logs/did-20260730-19{2716,2808,2909,3016}.json"
+            }
+          ]
+        },
+        {
+          "did": "0x1047",
+          "name": "Belt passenger",
+          "encoding": {
+            "kind": "boolean",
+            "trueValue": "02",
+            "falseValue": "01"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [
+            {
+              "by": "briancorbin",
+              "vehicle": "2022 Forester Wilderness",
+              "date": "2026-07-30",
+              "reverted": false,
+              "method": "Same four captures. 1047 moved one state later than 1046, when the passenger belt was fastened.",
+              "evidence": "logs/did-20260730-19{2716,2808,2909,3016}.json"
+            }
+          ]
+        },
+        {
+          "did": "0x1044",
+          "name": "(unknown — belt-shaped)",
+          "encoding": {
+            "kind": "raw"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [],
+          "prediction": "Sits at 01 alongside the two confirmed buckles and never moved. Same shape, unknown seat."
+        },
+        {
+          "did": "0x1045",
+          "name": "(unknown — belt-shaped)",
+          "encoding": {
+            "kind": "raw"
+          },
+          "access": {
+            "read": true,
+            "write": false,
+            "securityAccess": null
+          },
+          "observations": [],
+          "prediction": "As 0x1044."
+        }
+      ],
+      "role": "Restraints — seatbelt buckle switches. Spells booleans 01 unbuckled / 02 buckled, unlike 0x75A's 00/FF.",
+      "todo": "Rear belts never appeared — page 23 is this module's distinctive page and was never swept, because the enumerator defaulted to a generic page list. Sweep it."
+    },
+    {
+      "address": "0x75B",
+      "name": "Tire pressure monitor",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "F1"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "TPMS — per-wheel pressures.",
+      "todo": "Enumerate, then let pressure out of one tyre and re-enumerate to map corner to identifier."
+    },
+    {
+      "address": "0x7BC",
+      "name": "Keyless Access & Push Start (C)",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "11",
+        "12",
+        "13",
+        "20",
+        "30",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Keyless entry, driver side. Knows door and gate state for locking logic."
+    },
+    {
+      "address": "0x7C9",
+      "name": "Keyless Access & Push Start (P)",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "11",
+        "12",
+        "13",
+        "20",
+        "30",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Keyless entry, passenger side."
+    },
+    {
+      "address": "0x7E8",
+      "name": "2.5 DOHC",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "11",
+        "12",
+        "13",
+        "20",
+        "30",
+        "74",
+        "75",
+        "76",
+        "77",
+        "F1",
+        "F4"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Engine control module. Answers the standard mode-01 PID set and holds the VIN at F190."
+    },
+    {
+      "address": "0x7E9",
+      "name": "Transmission",
+      "nameSource": "inferred",
+      "pages": [],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "TCM. Answers mode 01 but was never seen answering mode 22."
+    },
+    {
+      "address": "0x78F",
+      "name": "EyeSight",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10-16",
+        "20-2E",
+        "30-39",
+        "40-49",
+        "4A",
+        "50-5F",
+        "60-6F",
+        "70-7C",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Driver assistance cameras. By far the richest module — 92 pages."
+    },
+    {
+      "address": "0x71F",
+      "name": "Electric Brake Booster",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "30",
+        "31",
+        "32",
+        "33",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": []
+    },
+    {
+      "address": "0x74A",
+      "name": "RADAR ASSY B&S LH",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Blind-spot radar, left."
+    },
+    {
+      "address": "0x74B",
+      "name": "RADAR ASSY B&S RH",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Blind-spot radar, right."
+    },
+    {
+      "address": "0x77E",
+      "name": "Data Communication Module",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "11",
+        "12",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Telematics."
+    },
+    {
+      "address": "0x78E",
+      "name": "Sonar system",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Parking sensors."
+    },
+    {
+      "address": "0x7B8",
+      "name": "VDC/Parking Brake System",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "20",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Stability control and electronic parking brake."
+    },
+    {
+      "address": "0x7DD",
+      "name": "MFD",
+      "nameSource": "uds-f197",
+      "pages": [
+        "01",
+        "02",
+        "10",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Multi-function display."
+    },
+    {
+      "address": "0x78B",
+      "name": "(declined to answer F197)",
+      "nameSource": "uds-f197",
+      "pages": [
+        "02",
+        "03",
+        "10",
+        "A0",
+        "F1",
+        "FF"
+      ],
+      "identifiersAnswering": 0,
+      "signals": [],
+      "role": "Unknown. The only module that would not give a name.",
+      "todo": "Try F187 (part number) or F18C (serial) to identify it. Page A0 is unique to this module."
+    }
+  ],
+  "broadcastFrames": [
+    {
+      "canID": "0x3AC",
+      "name": "BodyInfo",
+      "bus": "main / powertrain CAN",
+      "provenance": "community",
+      "source": "opendbc",
+      "signals": [
+        "DOOR_OPEN_FL",
+        "DOOR_OPEN_FR",
+        "DOOR_OPEN_RL",
+        "DOOR_OPEN_RR",
+        "DOOR_OPEN_TRUNK",
+        "BRAKE",
+        "LOWBEAM",
+        "HIGHBEAM",
+        "FOG_LIGHTS",
+        "WIPERS"
+      ],
+      "note": "DOOR_OPEN_TRUNK is bit 36 — the broadcast counterpart of our measured 22 104E. Cross-checking the two is a free validation of both."
+    },
+    {
+      "canID": "0x390",
+      "name": "Dashlights",
+      "bus": "main / powertrain CAN",
+      "provenance": "community",
+      "source": "opendbc",
+      "signals": [
+        "SEATBELT_FL",
+        "LEFT_BLINKER",
+        "RIGHT_BLINKER",
+        "UNITS",
+        "ICY_ROAD",
+        "STOP_START"
+      ]
+    },
+    {
+      "canID": "0x040",
+      "name": "Throttle",
+      "bus": "main / powertrain CAN",
+      "provenance": "community",
+      "source": "opendbc",
+      "signals": [
+        "Engine_RPM",
+        "Throttle_Pedal",
+        "Throttle_Cruise",
+        "Neutral"
+      ]
+    },
+    {
+      "canID": "0x13A",
+      "name": "Wheel_Speeds",
+      "bus": "main / powertrain CAN",
+      "provenance": "community",
+      "source": "opendbc",
+      "signals": [
+        "FL",
+        "FR",
+        "RL",
+        "RR"
+      ]
+    }
+  ],
+  "openQuestions": [
+    {
+      "question": "Is the instrument cluster on the same bus as 0x75A?",
+      "whyItMatters": "Decides whether chime input interception is a mirror-shroud job or a dash teardown. Cutting at the gateway does nothing if the BIU and cluster share a bus, because that traffic never crosses it.",
+      "howToAnswer": "Back-probe CAN H/L at the EyeSight connector and watch for cluster-sourced frames — odometer, warning state, unit preference.",
+      "blocks": [
+        "route 3b install location"
+      ]
+    },
+    {
+      "question": "Were the belt captures cumulative or isolated?",
+      "whyItMatters": "Decides whether 0x1046 is the driver belt or an aggregate. It is the only thing keeping the two belt signals at candidate instead of confirmed.",
+      "howToAnswer": "One enumeration of 0x788 with ONLY the passenger belt fastened. If 0x1046 reads 01, it is the driver belt."
+    },
+    {
+      "question": "Where are the rear seatbelts?",
+      "whyItMatters": "Fastening the rear driver belt moved nothing on the pages swept.",
+      "howToAnswer": "Sweep page 23 on 0x788 — its distinctive page, and never yet enumerated."
+    },
+    {
+      "question": "Is 0x75A also the CAN gateway?",
+      "whyItMatters": "The module holding the gate bit would also be routing between networks — which changes what cutting near it does.",
+      "howToAnswer": "If 0x75A transmits on the main bus while also holding body signals, it is on both networks."
+    },
+    {
+      "question": "What is module 0x78B?",
+      "whyItMatters": "The only module that refused to answer F197. Unknown capability on the car.",
+      "howToAnswer": "Try F187 (part number) or F18C (serial). Page A0 is unique to it and worth enumerating."
+    },
+    {
+      "question": "Which identifiers carry the seatbelt buckle switches?",
+      "whyItMatters": "Second-most-wanted chime after the gate, and currently invented rather than measured.",
+      "howToAnswer": "Enumerate 0x788 belts-unbuckled, then buckled. Page 23 is its distinctive one."
+    },
+    {
+      "question": "Which identifiers carry per-wheel tyre pressure?",
+      "howToAnswer": "Enumerate 0x75B, let pressure out of one tyre, re-enumerate. The corner that moves names itself."
+    },
+    {
+      "question": "Do the other three doors match the predicted neighbours?",
+      "whyItMatters": "0x104A/104C/104D are inferred, not measured — the registry currently claims three things it hasn't proven.",
+      "howToAnswer": "Open one door at a time and re-enumerate 0x75A."
+    },
+    {
+      "question": "Are engine internals present on the main bus at all?",
+      "whyItMatters": "opendbc decodes only what openpilot needs — coolant, fuel trims, oil temp are absent from its table. If the bus carries them undecoded, a tap replaces PID polling entirely; if not, mode 01 stays.",
+      "howToAnswer": "Tap, capture, and look for frames that correlate with known PID values."
+    },
+    {
+      "question": "What are the other 186 identifiers on 0x75A?",
+      "whyItMatters": "191 answer, 5 are identified. The rest are the largest single pool of unknown vehicle state we have access to.",
+      "howToAnswer": "Same mark/diff method, one physical change at a time. Lights, wipers, ignition position, gear selector, handbrake."
+    }
+  ],
+  "conventions": [
+    {
+      "name": "22 xx00 is a support bitmask",
+      "provenance": "measured",
+      "date": "2026-07-30",
+      "detail": "Four bytes, one bit per identifier, covering the 32 that follow, with the last bit chaining to the next block — the same convention mode-01 PID 00 uses. 0x74A answered 00 00 E0 50 at 0100, predicting 0111 0112 0113 011A 011C, which is exactly what it went on to answer.",
+      "consequence": "65,536 identifiers cost ~256 requests to map instead of 65,536."
+    },
+    {
+      "name": "An ELM327 in protocol 6 only receives 0x7E8–0x7EF",
+      "provenance": "measured",
+      "date": "2026-07-30",
+      "detail": "The legislated OBD response window. Every body module is outside it and gets discarded in hardware. ATCF 700 + ATCM 700 widens it.",
+      "consequence": "Without this a scan sees only the engine, and the car looks silent when it is answering."
+    },
+    {
+      "name": "This car answers FF for true, not 01",
+      "provenance": "measured",
+      "date": "2026-07-30",
+      "consequence": "A decoder testing `== 1` reads every open tailgate as closed."
+    },
+    {
+      "name": "Boolean encoding is per-module, not per-car",
+      "provenance": "measured",
+      "date": "2026-07-30",
+      "detail": "0x75A answers latches 00 shut / FF open. 0x788 answers buckles 01 unbuckled / 02 buckled.",
+      "consequence": "A 'non-zero means true' decoder reports every unfastened seatbelt as fastened. Encoding is declared per signal."
+    }
+  ],
+  "sources": [
+    {
+      "id": "self",
+      "name": "Measured on the car",
+      "note": "Enumerate a module, change one physical thing, enumerate again, diff. See docs/design/did-discovery.md."
+    },
+    {
+      "id": "sae-j1979",
+      "name": "SAE J1979 / ISO 15031-5 standard OBD-II PIDs",
+      "url": "https://en.wikipedia.org/wiki/OBD-II_PIDs",
+      "note": "Hand-coded into Sources/Maia/PID.swift. Universal across post-1996 vehicles."
+    },
+    {
+      "id": "iso-14229",
+      "name": "ISO 14229 (UDS) standardised identifiers",
+      "note": "The F1xx block — VIN, part numbers, system name. Same on any UDS-compliant module."
+    },
+    {
+      "id": "wal33d-dtc",
+      "name": "Wal33D/dtc-database",
+      "url": "https://github.com/Wal33D/dtc-database",
+      "license": "MIT",
+      "note": "9,415 generic + 93 Subaru trouble codes, vendored to Sources/Maia/Resources/dtc-codes.json. mytrile/obd-trouble-codes was rejected for systematic row drift."
+    },
+    {
+      "id": "opendbc",
+      "name": "commaai/opendbc — subaru_global",
+      "url": "https://github.com/commaai/opendbc/tree/master/opendbc/dbc/generator/subaru",
+      "license": "MIT",
+      "note": "Broadcast CAN frames on the main bus. Covers what openpilot needs, so plenty of engine internals are absent. Not reachable at the OBD port on this car."
+    },
+    {
+      "id": "none",
+      "name": "No public source exists",
+      "note": "Subaru publishes no mode-22 identifier table. Their dealer tool knows these internally. No community dataset covers them either."
+    }
+  ],
+  "buses": [
+    {
+      "name": "OBD-II diagnostic stub",
+      "access": "OBD-II port, pins 6/14",
+      "carries": "Request/response diagnostics only — no broadcast traffic whatsoever",
+      "evidence": "120 Ω across pins 6/14 (one terminator, so a stub) and zero broadcast frames observed on an error-free line",
+      "provenance": "measured",
+      "date": "2026-07-30"
+    },
+    {
+      "name": "main / powertrain CAN",
+      "access": "EyeSight camera connector, behind the rear-view mirror",
+      "carries": "Engine, chassis, and (per opendbc) BodyInfo + Dashlights",
+      "provenance": "community",
+      "note": "Reachable with a comma 'Subaru C' harness as an inline passthrough, or by back-probing. Pinout: commaai/neo car_harness/v3/Subaru_C_Harness.pdf"
+    },
+    {
+      "name": "body CAN",
+      "access": "not yet located",
+      "carries": "Presumed home of the BIU, keyless, TPMS",
+      "provenance": "inferred",
+      "note": "Whether the instrument cluster shares a bus with 0x75A is the open question that picks the route-3b install location. See docs/design/can-access.md."
+    }
+  ]
+}

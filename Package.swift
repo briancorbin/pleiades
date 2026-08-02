@@ -16,7 +16,7 @@ let package = Package(
     targets: [
         .target(name: "Maia", resources: [
             .copy("Resources/dtc-codes.json"),
-            .copy("Resources/signal-registry.json"),
+            .copy("Resources/registry"),
             .copy("Resources/ATTRIBUTION.md"),
         ]),
         .target(name: "Electra", dependencies: ["Maia"]),

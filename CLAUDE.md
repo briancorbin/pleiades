@@ -15,6 +15,7 @@ silenced from any menu, and escalated into tapping the whole car.
 | `docs/design/did-discovery.md` | How identifiers get found. The method, and what it cost to learn. |
 | `docs/design/chimes.md` | The five routes to the factory chimes, and which one we chose. |
 | `docs/design/architecture.md` | Star map, phases, verified PID appendix. |
+| `docs/registry-format.md` | **The community data format.** Why confidence is derived from evidence, and why writes are gated on it. |
 
 ## The three facts that explain most decisions
 
@@ -81,10 +82,21 @@ identifier here was measured.
 
 ## Single sources of truth
 
-- `Sources/Maia/Resources/signal-registry.json` — what the car exposes.
-  Bundled so the app reads it; `pleiades registry` renders `docs/SIGNALS.md`;
-  `RegistryDriftTests` asserts it agrees with `ProprietarySignal`. Editing one
-  without the other fails the bench.
+- `Sources/Maia/Resources/registry/<platform>.json` — what a platform
+  exposes. Format spec in `docs/registry-format.md`. Bundled so the app reads
+  it; `pleiades registry` renders `docs/SIGNALS.md`; `RegistryDriftTests`
+  asserts it agrees with `ProprietarySignal`. Editing one without the other
+  fails the bench.
+
+  **Confidence is derived, never asserted.** A contribution is an
+  *observation* — what someone did and what happened — and confirmed means
+  either seen to change and change back, or reproduced by a second
+  contributor. You cannot mark something confirmed; you record evidence good
+  enough that it becomes confirmed.
+
+  **`access.write` requires `confidence: confirmed`**, enforced by test.
+  Reading a misidentified identifier costs a misinterpreted number; writing to
+  one can misconfigure a restraint system on a stranger's car.
 - `docs/capture-procedures.json` — scripted capture sessions.
 - `Sources/Maia/ProprietarySignal.swift` ↔ `firmware/merope/lib/merope_core/
   include/merope_frames.h` — identifiers must match; nothing reconciles them

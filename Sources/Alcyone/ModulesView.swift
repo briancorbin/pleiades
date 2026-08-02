@@ -73,14 +73,14 @@ public struct ModulesView: View {
 
     private func summary(_ registry: VehicleRegistry) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("\(registry.vehicle.year) \(registry.vehicle.model)".uppercased())
+            Text(registry.platform.name.uppercased())
                 .font(.system(size: 11, weight: .bold))
                 .tracking(1.5)
                 .foregroundStyle(Theme.copper)
             Text("\(registry.modules.count) modules · \(registry.count(.confirmed)) identifiers confirmed · \(registry.unknownCount) still unknown")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textDim)
-            Text(registry.vehicle.obdProtocol)
+            Text(registry.platform.protocolDescription)
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.textDim.opacity(0.7))
         }
@@ -257,7 +257,8 @@ struct ModuleDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 8) {
-                Text(signal.provenance.label)
+                Text(signal.confidence == .unidentified ? "no observations"
+                     : "\(signal.contributorCount) contributor\(signal.contributorCount == 1 ? "" : "s")")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Theme.textDim.opacity(0.7))
                 if let date = signal.date {
