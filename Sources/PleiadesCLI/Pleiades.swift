@@ -101,6 +101,8 @@ struct Pleiades {
                 print("Mapping requires CoreBluetooth (macOS/iOS).")
                 exit(2)
                 #endif
+            case "registry":
+                try Registry.run(check: Array(args.dropFirst()).contains("--check"))
             case "compare":
                 let rest = Array(args.dropFirst())
                 let files = rest.filter { !$0.hasPrefix("--") }
@@ -139,6 +141,8 @@ struct Pleiades {
                   pleiades map [options]        find where the data lives:
                                                 identify modules, probe every
                                                 page marker 22 XX00
+                  pleiades registry [--check]   regenerate docs/SIGNALS.md from
+                                                docs/signal-registry.json
                   pleiades compare <a> <b>      diff two stored sweeps, no car
                 """)
                 exit(2)

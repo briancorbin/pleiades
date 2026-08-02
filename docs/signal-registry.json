@@ -1,0 +1,421 @@
+{
+  "$comment": "Source of truth for what this car exposes and how we know. Edit this, then run `pleiades registry` to regenerate docs/SIGNALS.md. A test asserts it agrees with Sources/Maia/ProprietarySignal.swift, so the two cannot drift.",
+  "vehicle": {
+    "year": 2022,
+    "model": "Subaru Forester Wilderness",
+    "engine": "FB25D",
+    "platform": "Subaru Global Platform",
+    "protocol": "ISO 15765-4 (CAN 11-bit, 500 kbit/s) — ELM327 protocol 6"
+  },
+  "provenance": {
+    "measured": "We proved it on this car. Requires a date, a method, and a log file.",
+    "standard": "Defined by a public standard (SAE J1979, ISO 14229). True for any conforming car.",
+    "community": "Third-party reverse engineering. Credible, not verified by us.",
+    "inferred": "Reasoned from evidence but never directly tested. Treat as a hypothesis.",
+    "invented": "Our own identifier, for bench signals with no known real counterpart."
+  },
+  "confidence": {
+    "confirmed": "Measured, and discriminated from the alternatives that could have explained the same result.",
+    "candidate": "A specific prediction we haven't tested. Says what would confirm or kill it.",
+    "unidentified": "The identifier answers. We have no idea what it means. This is the work queue.",
+    "rejected": "Investigated and ruled out. Recorded so nobody spends an evening on it twice."
+  },
+  "sources": [
+    {
+      "id": "self",
+      "name": "Measured on the car",
+      "note": "Enumerate a module, change one physical thing, enumerate again, diff. See docs/design/did-discovery.md."
+    },
+    {
+      "id": "sae-j1979",
+      "name": "SAE J1979 / ISO 15031-5 standard OBD-II PIDs",
+      "url": "https://en.wikipedia.org/wiki/OBD-II_PIDs",
+      "note": "Hand-coded into Sources/Maia/PID.swift. Universal across post-1996 vehicles."
+    },
+    {
+      "id": "iso-14229",
+      "name": "ISO 14229 (UDS) standardised identifiers",
+      "note": "The F1xx block — VIN, part numbers, system name. Same on any UDS-compliant module."
+    },
+    {
+      "id": "wal33d-dtc",
+      "name": "Wal33D/dtc-database",
+      "url": "https://github.com/Wal33D/dtc-database",
+      "license": "MIT",
+      "note": "9,415 generic + 93 Subaru trouble codes, vendored to Sources/Maia/Resources/dtc-codes.json. mytrile/obd-trouble-codes was rejected for systematic row drift."
+    },
+    {
+      "id": "opendbc",
+      "name": "commaai/opendbc — subaru_global",
+      "url": "https://github.com/commaai/opendbc/tree/master/opendbc/dbc/generator/subaru",
+      "license": "MIT",
+      "note": "Broadcast CAN frames on the main bus. Covers what openpilot needs, so plenty of engine internals are absent. Not reachable at the OBD port on this car."
+    },
+    {
+      "id": "none",
+      "name": "No public source exists",
+      "note": "Subaru publishes no mode-22 identifier table. Their dealer tool knows these internally. No community dataset covers them either."
+    }
+  ],
+  "buses": [
+    {
+      "name": "OBD-II diagnostic stub",
+      "access": "OBD-II port, pins 6/14",
+      "carries": "Request/response diagnostics only — no broadcast traffic whatsoever",
+      "evidence": "120 Ω across pins 6/14 (one terminator, so a stub) and zero broadcast frames observed on an error-free line",
+      "provenance": "measured",
+      "date": "2026-07-30"
+    },
+    {
+      "name": "main / powertrain CAN",
+      "access": "EyeSight camera connector, behind the rear-view mirror",
+      "carries": "Engine, chassis, and (per opendbc) BodyInfo + Dashlights",
+      "provenance": "community",
+      "note": "Reachable with a comma 'Subaru C' harness as an inline passthrough, or by back-probing. Pinout: commaai/neo car_harness/v3/Subaru_C_Harness.pdf"
+    },
+    {
+      "name": "body CAN",
+      "access": "not yet located",
+      "carries": "Presumed home of the BIU, keyless, TPMS",
+      "provenance": "inferred",
+      "note": "Whether the instrument cluster shares a bus with 0x75A is the open question that picks the route-3b install location. See docs/design/can-access.md."
+    }
+  ],
+  "modules": [
+    {
+      "address": "0x75A",
+      "name": "Integ. Unit",
+      "role": "Body integrated unit — doors, gate, lighting, chimes. Prime suspect for also being the CAN gateway.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "11", "F1", "FF"],
+      "identifiersAnswering": 191,
+      "signals": [
+        {
+          "did": "0x104E",
+          "name": "Rear gate",
+          "kind": "boolean",
+          "trueValue": "FF",
+          "falseValue": "00",
+          "confidence": "confirmed",
+          "provenance": "measured",
+          "date": "2026-07-30",
+          "method": "Enumerated 0x75A three times: gate shut, gate open, passenger door open. 104E moved for the gate and ignored the door.",
+          "evidence": "logs/did-20260730-190933.json, -191135, -191652",
+          "note": "The signal this whole project was started to get."
+        },
+        {
+          "did": "0x104B",
+          "name": "Door front right",
+          "kind": "boolean",
+          "trueValue": "FF",
+          "falseValue": "00",
+          "confidence": "confirmed",
+          "provenance": "measured",
+          "date": "2026-07-30",
+          "method": "Same three-state diff, inverted: tracked the passenger door and ignored the gate.",
+          "evidence": "logs/did-20260730-191652.json"
+        },
+        {
+          "did": "0x1073",
+          "name": "Any opening",
+          "kind": "boolean",
+          "trueValue": "FF",
+          "falseValue": "00",
+          "confidence": "confirmed",
+          "provenance": "measured",
+          "date": "2026-07-30",
+          "method": "Went true for both the gate and the passenger door — an aggregate, which is how it was told apart from the specific signals.",
+          "evidence": "logs/did-20260730-191652.json"
+        },
+        {
+          "did": "0x1117",
+          "name": "Rear gate (page 11 mirror)",
+          "kind": "boolean",
+          "confidence": "confirmed",
+          "provenance": "measured",
+          "date": "2026-07-30",
+          "method": "Tracked the gate identically to 0x104E across all three states.",
+          "evidence": "logs/did-20260730-191652.json",
+          "note": "Page 0x11 mirrors page 0x10. Kept as a cross-check; not polled."
+        },
+        {
+          "did": "0x1116",
+          "name": "Door front right (page 11 mirror)",
+          "kind": "boolean",
+          "confidence": "confirmed",
+          "provenance": "measured",
+          "date": "2026-07-30",
+          "evidence": "logs/did-20260730-191652.json"
+        },
+        {
+          "did": "0x104A",
+          "name": "Door front left",
+          "kind": "boolean",
+          "confidence": "candidate",
+          "provenance": "inferred",
+          "method": "Neighbour of the two confirmed hits; sat at 00 through all three states. Never tested with this door open.",
+          "note": "Open the driver's door alone and re-enumerate to promote or kill it."
+        },
+        {
+          "did": "0x104C",
+          "name": "Door rear left",
+          "kind": "boolean",
+          "confidence": "candidate",
+          "provenance": "inferred",
+          "method": "Neighbour of the confirmed hits; 00 throughout."
+        },
+        {
+          "did": "0x104D",
+          "name": "Door rear right",
+          "kind": "boolean",
+          "confidence": "candidate",
+          "provenance": "inferred",
+          "method": "Neighbour of the confirmed hits; 00 throughout."
+        },
+        {
+          "did": "0x1024",
+          "name": "(unknown — false positive)",
+          "kind": "unknown",
+          "confidence": "rejected",
+          "provenance": "measured",
+          "date": "2026-07-30",
+          "method": "Moved A6 → A5 on the first diff and looked like a candidate. Across three runs the two-pass volatile filter caught it drifting on its own.",
+          "note": "Recorded so nobody re-investigates it."
+        }
+      ]
+    },
+    {
+      "address": "0x788",
+      "name": "Airbag System",
+      "role": "Restraints. Most likely home of the seatbelt buckle switches.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "23", "F1", "FF"],
+      "signals": [],
+      "todo": "Enumerate with belts unbuckled, then buckled. Page 23 is its distinctive one."
+    },
+    {
+      "address": "0x75B",
+      "name": "Tire pressure monitor",
+      "role": "TPMS — per-wheel pressures.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "F1"],
+      "signals": [],
+      "todo": "Enumerate, then let pressure out of one tyre and re-enumerate to map corner to identifier."
+    },
+    {
+      "address": "0x7BC",
+      "name": "Keyless Access & Push Start (C)",
+      "role": "Keyless entry, driver side. Knows door and gate state for locking logic.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "11", "12", "13", "20", "30", "F1", "FF"],
+      "signals": []
+    },
+    {
+      "address": "0x7C9",
+      "name": "Keyless Access & Push Start (P)",
+      "role": "Keyless entry, passenger side.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "11", "12", "13", "20", "30", "F1", "FF"],
+      "signals": []
+    },
+    {
+      "address": "0x7E8",
+      "name": "2.5 DOHC",
+      "role": "Engine control module. Answers the standard mode-01 PID set and holds the VIN at F190.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "11", "12", "13", "20", "30", "74", "75", "76", "77", "F1", "F4"],
+      "signals": [],
+      "note": "Its 0x01xx page is 24 identifiers of mostly FF placeholders."
+    },
+    {
+      "address": "0x7E9",
+      "name": "Transmission",
+      "role": "TCM. Answers mode 01 but was never seen answering mode 22.",
+      "nameProvenance": "inferred",
+      "pages": [],
+      "signals": []
+    },
+    {
+      "address": "0x78F",
+      "name": "EyeSight",
+      "role": "Driver assistance cameras. By far the richest module — 92 pages.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10-16", "20-2E", "30-39", "40-49", "4A", "50-5F", "60-6F", "70-7C", "F1", "FF"],
+      "signals": []
+    },
+    {
+      "address": "0x71F",
+      "name": "Electric Brake Booster",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "30", "31", "32", "33", "F1", "FF"],
+      "signals": []
+    },
+    {
+      "address": "0x74A",
+      "name": "RADAR ASSY B&S LH",
+      "role": "Blind-spot radar, left.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "F1", "FF"],
+      "signals": []
+    },
+    {
+      "address": "0x74B",
+      "name": "RADAR ASSY B&S RH",
+      "role": "Blind-spot radar, right.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "F1", "FF"],
+      "signals": []
+    },
+    {
+      "address": "0x77E",
+      "name": "Data Communication Module",
+      "role": "Telematics.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "11", "12", "F1", "FF"],
+      "signals": []
+    },
+    {
+      "address": "0x78E",
+      "name": "Sonar system",
+      "role": "Parking sensors.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "F1", "FF"],
+      "signals": []
+    },
+    {
+      "address": "0x7B8",
+      "name": "VDC/Parking Brake System",
+      "role": "Stability control and electronic parking brake.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "20", "F1", "FF"],
+      "signals": []
+    },
+    {
+      "address": "0x7DD",
+      "name": "MFD",
+      "role": "Multi-function display.",
+      "nameProvenance": "measured",
+      "pages": ["01", "02", "10", "F1", "FF"],
+      "signals": []
+    },
+    {
+      "address": "0x78B",
+      "name": "(declined to answer F197)",
+      "role": "Unknown. The only module that would not give a name.",
+      "nameProvenance": "measured",
+      "pages": ["02", "03", "10", "A0", "F1", "FF"],
+      "signals": [],
+      "todo": "Try F187 (part number) or F18C (serial) to identify it. Page A0 is unique to this module."
+    }
+  ],
+  "broadcastFrames": [
+    {
+      "canID": "0x3AC",
+      "name": "BodyInfo",
+      "bus": "main / powertrain CAN",
+      "provenance": "community",
+      "source": "opendbc",
+      "signals": [
+        "DOOR_OPEN_FL", "DOOR_OPEN_FR", "DOOR_OPEN_RL", "DOOR_OPEN_RR",
+        "DOOR_OPEN_TRUNK", "BRAKE", "LOWBEAM", "HIGHBEAM", "FOG_LIGHTS", "WIPERS"
+      ],
+      "note": "DOOR_OPEN_TRUNK is bit 36 — the broadcast counterpart of our measured 22 104E. Cross-checking the two is a free validation of both."
+    },
+    {
+      "canID": "0x390",
+      "name": "Dashlights",
+      "bus": "main / powertrain CAN",
+      "provenance": "community",
+      "source": "opendbc",
+      "signals": ["SEATBELT_FL", "LEFT_BLINKER", "RIGHT_BLINKER", "UNITS", "ICY_ROAD", "STOP_START"]
+    },
+    {
+      "canID": "0x040",
+      "name": "Throttle",
+      "bus": "main / powertrain CAN",
+      "provenance": "community",
+      "source": "opendbc",
+      "signals": ["Engine_RPM", "Throttle_Pedal", "Throttle_Cruise", "Neutral"]
+    },
+    {
+      "canID": "0x13A",
+      "name": "Wheel_Speeds",
+      "bus": "main / powertrain CAN",
+      "provenance": "community",
+      "source": "opendbc",
+      "signals": ["FL", "FR", "RL", "RR"]
+    }
+  ],
+  "standardServices": [
+    { "service": "0x01", "name": "Current data (PIDs)", "provenance": "standard", "note": "57 supported on this car; 20 in Maia's catalog. Appendix A of architecture.md." },
+    { "service": "0x02", "name": "Freeze frame", "provenance": "standard" },
+    { "service": "0x03", "name": "Stored trouble codes", "provenance": "standard" },
+    { "service": "0x04", "name": "Clear codes", "provenance": "standard" },
+    { "service": "0x09", "name": "Vehicle info (VIN)", "provenance": "standard" },
+    { "service": "0x22", "name": "ReadDataByIdentifier", "provenance": "standard", "note": "The service is standard; every identifier behind it on this car is manufacturer-private and unpublished." }
+  ],
+  "openQuestions": [
+    {
+      "question": "Is the instrument cluster on the same bus as 0x75A?",
+      "whyItMatters": "Decides whether chime input interception is a mirror-shroud job or a dash teardown. Cutting at the gateway does nothing if the BIU and cluster share a bus, because that traffic never crosses it.",
+      "howToAnswer": "Back-probe CAN H/L at the EyeSight connector and watch for cluster-sourced frames — odometer, warning state, unit preference.",
+      "blocks": ["route 3b install location"]
+    },
+    {
+      "question": "Is 0x75A also the CAN gateway?",
+      "whyItMatters": "The module holding the gate bit would also be routing between networks — which changes what cutting near it does.",
+      "howToAnswer": "If 0x75A transmits on the main bus while also holding body signals, it is on both networks."
+    },
+    {
+      "question": "What is module 0x78B?",
+      "whyItMatters": "The only module that refused to answer F197. Unknown capability on the car.",
+      "howToAnswer": "Try F187 (part number) or F18C (serial). Page A0 is unique to it and worth enumerating."
+    },
+    {
+      "question": "Which identifiers carry the seatbelt buckle switches?",
+      "whyItMatters": "Second-most-wanted chime after the gate, and currently invented rather than measured.",
+      "howToAnswer": "Enumerate 0x788 belts-unbuckled, then buckled. Page 23 is its distinctive one."
+    },
+    {
+      "question": "Which identifiers carry per-wheel tyre pressure?",
+      "howToAnswer": "Enumerate 0x75B, let pressure out of one tyre, re-enumerate. The corner that moves names itself."
+    },
+    {
+      "question": "Do the other three doors match the predicted neighbours?",
+      "whyItMatters": "0x104A/104C/104D are inferred, not measured — the registry currently claims three things it hasn't proven.",
+      "howToAnswer": "Open one door at a time and re-enumerate 0x75A."
+    },
+    {
+      "question": "Are engine internals present on the main bus at all?",
+      "whyItMatters": "opendbc decodes only what openpilot needs — coolant, fuel trims, oil temp are absent from its table. If the bus carries them undecoded, a tap replaces PID polling entirely; if not, mode 01 stays.",
+      "howToAnswer": "Tap, capture, and look for frames that correlate with known PID values."
+    },
+    {
+      "question": "What are the other 186 identifiers on 0x75A?",
+      "whyItMatters": "191 answer, 5 are identified. The rest are the largest single pool of unknown vehicle state we have access to.",
+      "howToAnswer": "Same mark/diff method, one physical change at a time. Lights, wipers, ignition position, gear selector, handbrake."
+    }
+  ],
+  "conventions": [
+    {
+      "name": "22 xx00 is a support bitmask",
+      "provenance": "measured",
+      "date": "2026-07-30",
+      "detail": "Four bytes, one bit per identifier, covering the 32 that follow, with the last bit chaining to the next block — the same convention mode-01 PID 00 uses. 0x74A answered 00 00 E0 50 at 0100, predicting 0111 0112 0113 011A 011C, which is exactly what it went on to answer.",
+      "consequence": "65,536 identifiers cost ~256 requests to map instead of 65,536."
+    },
+    {
+      "name": "An ELM327 in protocol 6 only receives 0x7E8–0x7EF",
+      "provenance": "measured",
+      "date": "2026-07-30",
+      "detail": "The legislated OBD response window. Every body module is outside it and gets discarded in hardware. ATCF 700 + ATCM 700 widens it.",
+      "consequence": "Without this a scan sees only the engine, and the car looks silent when it is answering."
+    },
+    {
+      "name": "This car answers FF for true, not 01",
+      "provenance": "measured",
+      "date": "2026-07-30",
+      "consequence": "A decoder testing `== 1` reads every open tailgate as closed."
+    }
+  ]
+}

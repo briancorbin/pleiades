@@ -240,7 +240,8 @@ request each:
 | `7E8` | 2.5 DOHC | the engine; also holds the VIN at `F190` |
 | `78B` | *(wouldn't say)* | answers pages `02 03 10 A0` |
 
-The VIN came back clean from `7E8`: `JF2SKAMCXNH519189`.
+The VIN came back clean from `7E8` (redacted here — this repo is public, and
+a VIN identifies one specific car).
 
 Pages `01 02 10 F1 FF` are near-universal boilerplate. The *distinctive*
 pages are where a module keeps its own business — `75A` has `11`, `788` has
