@@ -6,3 +6,7 @@ xcuserdata/
 *.xcodeproj
 logs/
 SESSION_HANDOFF_*.md
+
+# Python bench tooling for the CAN adapter
+tools/canbus/.venv/
+tools/canbus/__pycache__/
