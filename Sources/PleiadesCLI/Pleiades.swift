@@ -105,6 +105,23 @@ struct Pleiades {
                 print("Mapping requires CoreBluetooth (macOS/iOS).")
                 exit(2)
                 #endif
+            case "procedure":
+                #if canImport(CoreBluetooth)
+                let rest = Array(args.dropFirst())
+                guard let id = rest.first, !id.hasPrefix("--") else {
+                    try ProcedureRunner.list()
+                    exit(rest.isEmpty ? 0 : 2)
+                }
+                try await ProcedureRunner.run(
+                    id: id,
+                    nameHint: value(of: "--name", in: rest),
+                    st: value(of: "--st", in: rest) ?? "32",
+                    passes: value(of: "--passes", in: rest).flatMap { Int($0) } ?? 2
+                )
+                #else
+                print("Procedures require CoreBluetooth (macOS/iOS).")
+                exit(2)
+                #endif
             case "registry":
                 try Registry.run(check: Array(args.dropFirst()).contains("--check"))
             case "compare":
@@ -145,6 +162,8 @@ struct Pleiades {
                   pleiades map [options]        find where the data lives:
                                                 identify modules, probe every
                                                 page marker 22 XX00
+                  pleiades procedure [id]       run a scripted capture session
+                                                (no id lists what's available)
                   pleiades registry [--check]   regenerate docs/SIGNALS.md from
                                                 docs/signal-registry.json
                   pleiades compare <a> <b>      diff two stored sweeps, no car

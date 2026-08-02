@@ -144,8 +144,15 @@ enum DIDEnumerator {
         }
     }
 
-    /// Walk one page's bitmask chain, then read what it advertised.
     private static func walk(_ session: ELM327Session, module: UInt32, page: UInt8) async throws -> [DIDReply] {
+        try await walkPage(session, page: page, quiet: false)
+    }
+
+    /// Walk one page's bitmask chain, then read what it advertised.
+    ///
+    /// Shared with the scripted procedure runner, which calls this many times
+    /// per session and wants the progress lines suppressed.
+    static func walkPage(_ session: ELM327Session, page: UInt8, quiet: Bool) async throws -> [DIDReply] {
         var out: [DIDReply] = []
         var advertised: [UInt16] = []
         var base = UInt16(page) << 8
@@ -174,10 +181,12 @@ enum DIDEnumerator {
             answered += replies.filter(\.isPositive).count
         }
 
-        print(String(
-            format: "  page %02X   %3d advertised, %3d answered",
-            page, targets.count, answered
-        ))
+        if !quiet {
+            print(String(
+                format: "  page %02X   %3d advertised, %3d answered",
+                page, targets.count, answered
+            ))
+        }
         return out
     }
 }

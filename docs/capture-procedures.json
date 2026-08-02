@@ -1,0 +1,130 @@
+{
+  "$comment": "Scripted capture sessions. The tool drives the procedure so the operator doesn't have to remember it, the tags are correct by construction, and each step is isolated from the last. Both `pleiades procedure` (mode 22, through a dongle) and the CAN sniffer can run these.",
+  "$why": "Today's belt captures are stuck at 'candidate' because the procedure was improvised — nobody can now say whether each belt stayed fastened as the next went on. A scripted step says 'unbuckle everything, then fasten ONLY the driver belt', and the ambiguity cannot arise.",
+  "procedures": [
+    {
+      "id": "doors",
+      "name": "Doors and tailgate",
+      "module": "0x75A",
+      "note": "One opening at a time, closed between each. Every step is checked twice — once when it opens and again when it shuts — so a byte that tracks the door is separated from one that merely happened to move.",
+      "steps": [
+        {
+          "do": "Open the FRONT LEFT (driver) door. Everything else stays shut.",
+          "undo": "Close the front left door.",
+          "expect": "Door FL",
+          "candidate": "0x104A"
+        },
+        {
+          "do": "Open the FRONT RIGHT (passenger) door.",
+          "undo": "Close the front right door.",
+          "expect": "Door FR",
+          "candidate": "0x104B"
+        },
+        {
+          "do": "Open the REAR LEFT door.",
+          "undo": "Close the rear left door.",
+          "expect": "Door RL",
+          "candidate": "0x104C"
+        },
+        {
+          "do": "Open the REAR RIGHT door.",
+          "undo": "Close the rear right door.",
+          "expect": "Door RR",
+          "candidate": "0x104D"
+        },
+        {
+          "do": "Open the REAR GATE.",
+          "undo": "Close the rear gate.",
+          "expect": "Rear gate",
+          "candidate": "0x104E"
+        }
+      ]
+    },
+    {
+      "id": "belts",
+      "name": "Seatbelt buckles",
+      "module": "0x788",
+      "note": "Start with every belt unfastened. One at a time, unfastened between — which is exactly the ambiguity that left 0x1046 and 0x1047 unconfirmed the first time round.",
+      "steps": [
+        {
+          "do": "Unfasten EVERY seatbelt. This is the baseline.",
+          "undo": null,
+          "expect": "baseline",
+          "candidate": null
+        },
+        {
+          "do": "Fasten ONLY the DRIVER belt.",
+          "undo": "Unfasten the driver belt.",
+          "expect": "Belt driver",
+          "candidate": "0x1046"
+        },
+        {
+          "do": "Fasten ONLY the FRONT PASSENGER belt.",
+          "undo": "Unfasten the front passenger belt.",
+          "expect": "Belt passenger",
+          "candidate": "0x1047"
+        },
+        {
+          "do": "Fasten ONLY the REAR LEFT belt.",
+          "undo": "Unfasten the rear left belt.",
+          "expect": "Belt rear left",
+          "candidate": null
+        },
+        {
+          "do": "Fasten ONLY the REAR CENTRE belt.",
+          "undo": "Unfasten the rear centre belt.",
+          "expect": "Belt rear centre",
+          "candidate": null
+        },
+        {
+          "do": "Fasten ONLY the REAR RIGHT belt.",
+          "undo": "Unfasten the rear right belt.",
+          "expect": "Belt rear right",
+          "candidate": null
+        }
+      ]
+    },
+    {
+      "id": "lights",
+      "name": "Exterior lighting",
+      "module": "0x75A",
+      "note": "The body integrated unit owns lighting. Ignition in ACC or ON.",
+      "steps": [
+        { "do": "Turn on PARKING lights (first click).", "undo": "Lights off.", "expect": "Parking lights", "candidate": null },
+        { "do": "Turn on LOW BEAM.", "undo": "Lights off.", "expect": "Low beam", "candidate": null },
+        { "do": "Turn on HIGH BEAM.", "undo": "Back to low beam, then off.", "expect": "High beam", "candidate": null },
+        { "do": "Turn on the REAR FOG light.", "undo": "Fog off.", "expect": "Rear fog", "candidate": null },
+        { "do": "Turn on HAZARDS.", "undo": "Hazards off.", "expect": "Hazards", "candidate": null },
+        { "do": "LEFT indicator on (hold the stalk).", "undo": "Indicator off.", "expect": "Left indicator", "candidate": null },
+        { "do": "RIGHT indicator on.", "undo": "Indicator off.", "expect": "Right indicator", "candidate": null }
+      ]
+    },
+    {
+      "id": "controls",
+      "name": "Driver controls",
+      "module": "0x75A",
+      "note": "Engine running, parked, handbrake on, foot on the brake where asked. Do not select a gear without the brake pressed.",
+      "steps": [
+        { "do": "Press and HOLD the brake pedal.", "undo": "Release the brake.", "expect": "Brake pedal", "candidate": null },
+        { "do": "Release the ELECTRIC PARKING BRAKE.", "undo": "Re-apply the parking brake.", "expect": "Parking brake", "candidate": null },
+        { "do": "Brake held — select REVERSE.", "undo": "Back to Park.", "expect": "Gear R", "candidate": null },
+        { "do": "Brake held — select DRIVE.", "undo": "Back to Park.", "expect": "Gear D", "candidate": null },
+        { "do": "Wipers on INTERMITTENT.", "undo": "Wipers off.", "expect": "Wipers", "candidate": null }
+      ]
+    },
+    {
+      "id": "tpms",
+      "name": "Tyre pressure, one corner",
+      "module": "0x75B",
+      "note": "Slow: a TPMS sensor may take a minute or two to report, and some only transmit when the wheel is moving. If nothing moves, drive a short distance between captures. Let out ~5 psi — enough to be unambiguous, little enough to pump back easily.",
+      "steps": [
+        {
+          "do": "Let ~5 psi out of the FRONT LEFT tyre. Wait a minute before continuing.",
+          "undo": "Re-inflate the front left tyre to placard pressure.",
+          "expect": "TPMS front left",
+          "candidate": null
+        }
+      ]
+    }
+  ]
+}
