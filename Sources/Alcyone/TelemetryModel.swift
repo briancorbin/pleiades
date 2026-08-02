@@ -306,6 +306,33 @@ public final class TelemetryModel: ObservableObject {
         }
     }
 
+    /// Enumerate a module for the Discover tab.
+    ///
+    /// Stops the poll loop for the duration: both would be issuing commands
+    /// on one transport, and `BLEELMTransport` rejects overlapping sends
+    /// rather than interleaving them.
+    public func enumerate(
+        module: UInt32, pages: [UInt8], passes: Int = 2, tag: String? = nil
+    ) async throws -> DIDSnapshot {
+        let wasRunning = loop != nil
+        stop()
+        defer { if wasRunning { start() } }
+
+        if !isInitialized {
+            guard source.isReady else { throw OBDError.connectionClosed }
+            try await source.session.initialize(
+                pinnedProtocol: source.pinnedProtocol,
+                receiveAllModules: source.receivesAllModules
+            )
+            isInitialized = true
+        }
+        _ = try? await source.session.send("ATH1")
+        defer { Task { _ = try? await self.source.session.send("ATH0") } }
+        return try await source.session.enumerate(
+            module: module, pages: pages, passes: passes, tag: tag
+        )
+    }
+
     /// Signals that have gone unanswered often enough to stop polling.
     /// Cleared whenever the source changes — a different car, or Merope
     /// instead of the dongle, has a different idea of what exists.

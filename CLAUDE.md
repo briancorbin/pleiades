@@ -52,10 +52,15 @@ identifier here was measured.
 - **Electra** — bench simulator. Fake car behind a fake ELM327, plus
   ESP32 firmware that plays scenarios.
 - **Alcyone** — the SwiftUI app. Tabs: Dashboard, Diagnostics, Alerts,
-  Chimes, Vehicle, **Modules**, Drives.
+  Chimes, Vehicle, **Modules**, **Discover**, Drives. Modules browses the
+  registry; Discover runs capture → change one thing → capture → name it,
+  from the passenger seat.
 - **Sterope** — *observational* alert rules, and *interventional* chime
   policies. Different features; see below.
-- **Celaeno** — archives. Fault events survive code clearing; drive logs.
+- **Celaeno** — archives. Fault events survive code clearing, drive logs,
+  and `FindingStore` — signals named on the iPad, exported as a patch to fold
+  back into the registry (the bundle is read-only at runtime, and a driveway
+  guess hasn't met the registry's measured-dated-evidenced bar anyway).
 - **Merope** — ESP32-S3 CAN tap. `firmware/merope/`, PlatformIO.
   `lib/merope_core` is portable host-tested C.
 

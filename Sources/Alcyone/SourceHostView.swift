@@ -1,3 +1,4 @@
+import Celaeno
 import Electra
 import Sterope
 import SwiftUI
@@ -31,6 +32,7 @@ public struct SourceHostView: View {
     private let bench: ElectraSource?
     private let ruleStore: RuleStore
     private let chimeStore: ChimePolicyStore
+    private let findingStore = FindingStore()
 
     public init(kind: TelemetrySourceKind, selection: Binding<String>,
                 ruleStore: RuleStore, chimeStore: ChimePolicyStore) {
@@ -54,7 +56,8 @@ public struct SourceHostView: View {
 
     public var body: some View {
         RootView(model: model, bench: bench, ruleStore: ruleStore,
-                 chimeStore: chimeStore, sourceSelection: $selection)
+                 chimeStore: chimeStore, findingStore: findingStore,
+                 sourceSelection: $selection)
             .onAppear { model.start() }
     }
 }

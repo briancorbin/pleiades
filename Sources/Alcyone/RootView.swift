@@ -1,3 +1,4 @@
+import Celaeno
 import Sterope
 import SwiftUI
 
@@ -8,6 +9,9 @@ public struct RootView: View {
     let bench: ElectraSource?
     let ruleStore: RuleStore
     let chimeStore: ChimePolicyStore
+    /// Where signals named in the Discover tab go. Optional so previews and
+    /// tests can skip it.
+    let findingStore: FindingStore?
     let sourceSelection: Binding<String>?
 
     public init(
@@ -15,12 +19,14 @@ public struct RootView: View {
         bench: ElectraSource? = nil,
         ruleStore: RuleStore,
         chimeStore: ChimePolicyStore,
+        findingStore: FindingStore? = nil,
         sourceSelection: Binding<String>? = nil
     ) {
         self.model = model
         self.bench = bench
         self.ruleStore = ruleStore
         self.chimeStore = chimeStore
+        self.findingStore = findingStore
         self.sourceSelection = sourceSelection
     }
 
@@ -41,6 +47,8 @@ public struct RootView: View {
                 .badge(model.gateOpen ? "!" : nil)
             ModulesView(model: model, ruleStore: ruleStore)
                 .tabItem { Label("Modules", systemImage: "cpu") }
+            DiscoverView(model: model, findingStore: findingStore)
+                .tabItem { Label("Discover", systemImage: "scope") }
             DrivesView(model: model)
                 .tabItem { Label("Drives", systemImage: "road.lanes") }
         }
