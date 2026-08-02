@@ -1,4 +1,4 @@
-<!-- Generated from docs/signal-registry.json by `pleiades registry`. Do not edit by hand. -->
+<!-- Generated from Sources/Maia/Resources/signal-registry.json by `pleiades registry`. Do not edit by hand. -->
 
 # Signal registry
 

@@ -39,6 +39,8 @@ public struct RootView: View {
             VehicleView(model: model)
                 .tabItem { Label("Vehicle", systemImage: "car.side.fill") }
                 .badge(model.gateOpen ? "!" : nil)
+            ModulesView(model: model, ruleStore: ruleStore)
+                .tabItem { Label("Modules", systemImage: "cpu") }
             DrivesView(model: model)
                 .tabItem { Label("Drives", systemImage: "road.lanes") }
         }

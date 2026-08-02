@@ -3,7 +3,8 @@ import XCTest
 
 /// The registry is only worth having if it can't quietly go wrong.
 ///
-/// `docs/signal-registry.json` records what this car exposes and how we know.
+/// The bundled `signal-registry.json` records what this car exposes and how
+/// we know it.
 /// `ProprietarySignal.swift` records what the app actually asks for. Those are
 /// two statements of the same fact, and two copies of a fact drift — silently,
 /// one stale line at a time, until nobody trusts either.
@@ -18,7 +19,7 @@ final class RegistryDriftTests: XCTestCase {
             .deletingLastPathComponent()          // Tests/MaiaTests
             .deletingLastPathComponent()          // Tests
             .deletingLastPathComponent()          // repo root
-            .appendingPathComponent("docs/signal-registry.json")
+            .appendingPathComponent("Sources/Maia/Resources/signal-registry.json")
     }
 
     private struct Entry {
@@ -65,7 +66,7 @@ final class RegistryDriftTests: XCTestCase {
             guard let entry = registry.first(where: { $0.did == signal.id }) else {
                 XCTFail("""
                 \(signal.name) (\(String(format: "0x%04X", signal.id))) is marked verified in \
-                ProprietarySignal.swift but is missing from docs/signal-registry.json
+                ProprietarySignal.swift but is missing from the signal registry
                 """)
                 continue
             }
@@ -158,6 +159,50 @@ final class RegistryDriftTests: XCTestCase {
                 question["howToAnswer"],
                 "\"\(text)\" is recorded with no way to answer it — that's a complaint, not a work item"
             )
+        }
+    }
+}
+
+/// The registry is now a type the app renders, not just a document — so the
+/// parse has to hold up, not merely the file.
+final class VehicleRegistryTests: XCTestCase {
+    func testBundledRegistryLoads() throws {
+        let registry = try XCTUnwrap(VehicleRegistry.shared, "registry missing from the bundle")
+        XCTAssertFalse(registry.modules.isEmpty)
+        XCTAssertEqual(registry.vehicle.year, 2022)
+    }
+
+    func testTheGateIsFindableByIdentifier() throws {
+        let registry = try XCTUnwrap(VehicleRegistry.shared)
+        let found = try XCTUnwrap(registry.signal(ProprietarySignal.gate.id))
+        XCTAssertEqual(found.module.address, 0x75A)
+        XCTAssertEqual(found.signal.confidence, .confirmed)
+        XCTAssertTrue(found.signal.isPollable)
+    }
+
+    func testUnknownCountIsWhatIsLeftToFind() throws {
+        let registry = try XCTUnwrap(VehicleRegistry.shared)
+        // Identifiers that answer, minus the ones we've named. If this ever
+        // goes negative the arithmetic is wrong somewhere.
+        XCTAssertGreaterThan(registry.unknownCount, 0)
+        XCTAssertLessThanOrEqual(registry.unknownCount, registry.totalAnswering)
+    }
+
+    func testSignalsSortByConfidenceSoTheKnownOnesReadFirst() throws {
+        let registry = try XCTUnwrap(VehicleRegistry.shared)
+        for module in registry.modules {
+            let order = module.signals.map(\.confidence)
+            XCTAssertEqual(order, order.sorted(), "\(module.label) signals are out of order")
+        }
+    }
+
+    func testOnlyPollableSignalsClaimToBePollable() throws {
+        let registry = try XCTUnwrap(VehicleRegistry.shared)
+        let catalogue = Set(ProprietarySignal.all.map(\.id))
+        for module in registry.modules {
+            for signal in module.signals {
+                XCTAssertEqual(signal.isPollable, catalogue.contains(signal.did), signal.name)
+            }
         }
     }
 }

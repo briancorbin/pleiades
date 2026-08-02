@@ -1,7 +1,10 @@
 import Foundation
 import Maia
 
-/// Renders `docs/signal-registry.json` into `docs/SIGNALS.md`.
+/// Renders the bundled signal registry into `docs/SIGNALS.md`.
+///
+/// The JSON lives in `Sources/Maia/Resources/` so the app can read it too —
+/// browsing what the car exposes shouldn't require a checkout.
 ///
 /// The registry is the single place any of this is written down. The markdown
 /// is never hand-edited — it's the JSON, rendered — so the sheet cannot drift
@@ -13,7 +16,7 @@ import Maia
 /// answers with no known meaning is a work item, not an absence — 191 answer
 /// on the body integrated unit and five have names.
 enum Registry {
-    static let jsonPath = "docs/signal-registry.json"
+    static let jsonPath = "Sources/Maia/Resources/signal-registry.json"
     static let markdownPath = "docs/SIGNALS.md"
 
     static func run(check: Bool) throws {
@@ -45,7 +48,7 @@ enum Registry {
         let vehicle = root["vehicle"] as? [String: Any] ?? [:]
 
         out.append("""
-        <!-- Generated from docs/signal-registry.json by `pleiades registry`. Do not edit by hand. -->
+        <!-- Generated from Sources/Maia/Resources/signal-registry.json by `pleiades registry`. Do not edit by hand. -->
 
         # Signal registry
 
