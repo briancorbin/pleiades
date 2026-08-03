@@ -45,21 +45,52 @@ LOGS = REPO / "logs"
 BITRATES = [500_000, 250_000, 125_000, 1_000_000]
 
 
-def open_bus(bitrate: int) -> can.BusABC:
-    """The CANable in gs_usb firmware, in listen-only mode.
+def open_bus(bitrate: int, listen_only: bool = True) -> can.BusABC:
+    """The CANable in gs_usb firmware, genuinely in listen-only mode.
 
-    Listen-only is deliberate and worth keeping until there's a reason not
-    to: the transceiver never drives the bus, never ACKs, and cannot put a
-    module into an error state. Nothing about a passive tap should be able to
-    change how the car behaves.
+    **python-can does not expose this.** `GsUsbBus.__init__` ends with a bare
+    `self.gs_usb.start()`, which is `GS_CAN_MODE_NORMAL` — the transceiver
+    drives the bus, ACKs every frame it receives, and transmits *error frames*
+    when it sees something it can't decode.
+
+    That last part is why this matters rather than being pedantry. The bitrate
+    hunt below tries 500k, 250k, 125k and 1M; on any given bus three of those
+    are wrong, and a normal-mode node at the wrong bitrate sees continuous
+    framing errors and shouts about them onto a live vehicle network. Probing
+    a moving car that way could disturb real traffic.
+
+    So the device gets restarted with GS_CAN_MODE_LISTEN_ONLY after python-can
+    is done with it. In listen-only the transceiver never drives the line at
+    all: no ACKs, no error frames, electrically invisible. Nothing about a
+    passive tap should be able to change how the car behaves.
     """
-    return can.Bus(
+    bus = can.Bus(
         interface="gs_usb",
         channel=0,
         index=0,
         bitrate=bitrate,
         receive_own_messages=False,
     )
+    if not listen_only:
+        return bus
+
+    from gs_usb.gs_usb import GS_CAN_MODE_HW_TIMESTAMP, GS_CAN_MODE_LISTEN_ONLY
+
+    device = bus.gs_usb
+    device.stop()
+    device.start(GS_CAN_MODE_LISTEN_ONLY | GS_CAN_MODE_HW_TIMESTAMP)
+
+    # The device masks off flags it doesn't support, so confirm rather than
+    # assume — silently falling back to normal mode is the failure this whole
+    # function exists to prevent.
+    if not device.device_flags & GS_CAN_MODE_LISTEN_ONLY:
+        bus.shutdown()
+        raise RuntimeError(
+            "This adapter won't enter listen-only mode. It would ACK frames "
+            "and emit error frames at the wrong bitrate. Pass --transmit-ok "
+            "only if you're on a bench you own."
+        )
+    return bus
 
 
 def load_dbc():
@@ -98,7 +129,7 @@ def cmd_inventory(args) -> int:
     for bitrate in bitrates:
         print(f"\nListening at {bitrate:,} bit/s for {args.seconds:g}s…")
         try:
-            bus = open_bus(bitrate)
+            bus = open_bus(bitrate, listen_only=not args.transmit_ok)
         except Exception as exc:  # noqa: BLE001 — surface the real reason
             print(f"  ✗ couldn't open the adapter: {exc}")
             return 1
@@ -154,7 +185,7 @@ def cmd_watch(args) -> int:
     rather than one identifier at a time.
     """
     db = load_dbc() if args.decode else None
-    bus = open_bus(args.bitrate)
+    bus = open_bus(args.bitrate, listen_only=not args.transmit_ok)
 
     try:
         input(
@@ -277,7 +308,7 @@ def cmd_decode(args) -> int:
     if args.ids:
         wanted = {int(x, 16) for x in args.ids.split(",")}
 
-    bus = open_bus(args.bitrate)
+    bus = open_bus(args.bitrate, listen_only=not args.transmit_ok)
     print("Decoding. Ctrl-C to stop.\n")
     seen: dict[int, dict] = {}
     try:
@@ -339,6 +370,14 @@ def main() -> int:
     dec.add_argument("--bitrate", type=int, default=500_000)
     dec.add_argument("--ids", type=str, default=None, help="e.g. 3AC,390")
     dec.set_defaults(func=cmd_decode)
+
+    # Listen-only is the default everywhere. Opting out is for a bench you
+    # own, never for a car that's running.
+    for sub_parser in (inv, watch, dec):
+        sub_parser.add_argument(
+            "--transmit-ok", action="store_true",
+            help="allow the adapter to ACK and emit error frames (bench only)",
+        )
 
     args = parser.parse_args()
     return args.func(args)
