@@ -29,11 +29,13 @@ import argparse
 import json
 import os
 import pathlib
+import platform
 import sys
 import time
 from collections import defaultdict
 
 import can
+import usb.core
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 DBC = REPO / "tools" / "canbus" / "dbc" / "subaru_global.dbc"
@@ -43,6 +45,34 @@ LOGS = REPO / "logs"
 # buses on this platform are 500k; body networks are frequently slower, and
 # a bus that answers at neither is probably LIN rather than a bad tap.
 BITRATES = [500_000, 250_000, 125_000, 1_000_000]
+
+
+def _allow_macos_open() -> None:
+    """Stop `GsUsb.start()` trying to detach a kernel driver on macOS.
+
+    `start()` opens with a USB reset. On macOS the re-enumeration that follows
+    makes libusb report a kernel driver attached to interface 0, and
+    `libusb_detach_kernel_driver` then fails with "[Errno 13] Access denied"
+    — followed by a segfault during cleanup, and a device left in a state
+    that needs a physical replug.
+
+    There is nothing genuinely to detach: interface 0 is vendor-specific
+    (class 0xFF), and macOS ships no driver that binds it. Only interface 1
+    is class 0xFE (DFU), which isn't the one being claimed. So the probe is
+    answering about a transient post-reset state rather than a real driver,
+    and reporting "no driver attached" is both true and what lets the open
+    succeed.
+
+    If something *were* genuinely holding the interface, claiming it fails
+    immediately afterwards with a clear error rather than a silent wrong
+    answer.
+    """
+    if platform.system() != "Darwin":
+        return
+    if getattr(usb.core.Device, "_pleiades_macos_patched", False):
+        return
+    usb.core.Device.is_kernel_driver_active = lambda self, interface: False
+    usb.core.Device._pleiades_macos_patched = True
 
 
 def open_bus(bitrate: int, listen_only: bool = True) -> can.BusABC:
@@ -64,6 +94,7 @@ def open_bus(bitrate: int, listen_only: bool = True) -> can.BusABC:
     all: no ACKs, no error frames, electrically invisible. Nothing about a
     passive tap should be able to change how the car behaves.
     """
+    _allow_macos_open()
     bus = can.Bus(
         interface="gs_usb",
         channel=0,
@@ -74,16 +105,33 @@ def open_bus(bitrate: int, listen_only: bool = True) -> can.BusABC:
     if not listen_only:
         return bus
 
-    from gs_usb.gs_usb import GS_CAN_MODE_HW_TIMESTAMP, GS_CAN_MODE_LISTEN_ONLY
+    from gs_usb.gs_usb import (
+        GS_CAN_MODE_HW_TIMESTAMP,
+        GS_CAN_MODE_LISTEN_ONLY,
+        GS_CAN_MODE_START,
+        DeviceMode,
+        _GS_USB_BREQ_MODE,
+    )
 
     device = bus.gs_usb
-    device.stop()
-    device.start(GS_CAN_MODE_LISTEN_ONLY | GS_CAN_MODE_HW_TIMESTAMP)
 
-    # The device masks off flags it doesn't support, so confirm rather than
-    # assume — silently falling back to normal mode is the failure this whole
+    # Send the mode command straight to the device rather than calling
+    # `GsUsb.start()` again. That method begins with a USB reset, and on macOS
+    # the re-enumeration lets the OS re-attach a driver that libusb then
+    # refuses to detach — "[Errno 13] Access denied", followed by a segfault
+    # on cleanup. python-can has already done the reset and timing setup; all
+    # that's left is to re-issue the mode with the listen-only bit set.
+    wanted = GS_CAN_MODE_LISTEN_ONLY | GS_CAN_MODE_HW_TIMESTAMP
+    supported = wanted & device.device_capability.feature
+    device.device_flags = supported
+    device.gs_usb.ctrl_transfer(
+        0x41, _GS_USB_BREQ_MODE, 0, 0, DeviceMode(GS_CAN_MODE_START, supported).pack()
+    )
+
+    # The hardware masks off features it doesn't have, so confirm rather than
+    # assume — silently running in normal mode is the exact failure this
     # function exists to prevent.
-    if not device.device_flags & GS_CAN_MODE_LISTEN_ONLY:
+    if not supported & GS_CAN_MODE_LISTEN_ONLY:
         bus.shutdown()
         raise RuntimeError(
             "This adapter won't enter listen-only mode. It would ACK frames "
