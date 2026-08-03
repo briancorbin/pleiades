@@ -12,6 +12,7 @@ silenced from any menu, and escalated into tapping the whole car.
 |---|---|
 | `docs/SIGNALS.md` | **Every module and identifier we know, and how we know it.** Generated — never edit by hand. |
 | `docs/design/can-access.md` | The car's network topology and where to tap. |
+| `docs/design/bus-first-contact.md` | **Field procedure for reading a real bus with no OBD port.** Bench rehearsal, then the tap. |
 | `docs/design/did-discovery.md` | How identifiers get found. The method, and what it cost to learn. |
 | `docs/design/chimes.md` | The five routes to the factory chimes, and which one we chose. |
 | `docs/design/architecture.md` | Star map, phases, verified PID appendix. |
