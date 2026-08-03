@@ -55,6 +55,7 @@ responsibility you don't want.
 |---|---|---|
 | See everything | gateway connector | every bus in the car lands there; back-probe, modify nothing |
 | Read one bus | EyeSight connector | `0x3AC` BodyInfo is on the main bus; behind the mirror, no dash work |
+| Find the buses | ohm each pair, car off | 60 Ω = live CAN, 120 Ω = a stub, anything else isn't CAN. No diagram needed — see `bus-first-contact.md` |
 | Intercept a chime input | at the cluster | only the cluster should be wrong about the gate |
 | Mute/replace a sound | cluster speaker lead | analog, unrelated to CAN |
 

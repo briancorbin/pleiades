@@ -46,9 +46,52 @@ BOOT, and confirm the diff catches it:
 
 ## Phase 1 — find the bus
 
-**Where:** the EyeSight camera connector, behind the rear-view mirror under a
-snap-off shroud. Pin assignments are in comma's published
-`Subaru_C_Harness.pdf` (`commaai/neo`, `car_harness/v3/`).
+Two places worth tapping, and they answer different questions.
+
+### 1a. The EyeSight connector — easier, one bus
+
+Behind the rear-view mirror under a snap-off shroud. Pin assignments are in
+comma's published `Subaru_C_Harness.pdf` (`commaai/neo`, `car_harness/v3/`).
+
+Start here. Not because it's the better tap, but because a **known-good
+access point with a published pinout** turns a first run into a yes/no. If a
+harder location later comes back silent, you'll know it's the location and
+not the technique.
+
+### 1b. The gateway — harder, every bus at once
+
+The gateway is the only place in the car where **every network lands on one
+connector**. Nowhere else gives you that, and it's the definitive answer to
+questions the topology doc currently guesses at: how many buses this car
+actually has, and which one the instrument cluster sits on.
+
+**Finding it needs no wiring diagram.** With the car off, ohm across each
+twisted pair on a candidate module's connector:
+
+| Across a pair | What it is |
+|---|---|
+| **60 Ω** | a terminated CAN bus — this is one you want |
+| **120 Ω** | a stub off the gateway (this is what the OBD port measures) |
+| anything else | not CAN — LIN, power, or a discrete signal |
+
+Two minutes with a multimeter identifies every CAN pair on a connector, with
+nothing connected and nothing powered. It's the same measurement that proved
+the OBD port was a stub, used as a search tool instead of a diagnosis.
+
+**Where to look:** if `0x75A` "**Integ**. Unit" is the gateway — its name and
+its 191 identifiers both hint that way — it's the body integrated unit, which
+on a Forester generally lives behind the driver's-side lower dash panel. Trim
+clips rather than a teardown. That location is inferred, not measured: you're
+looking for a module with several twisted pairs landing on it, then ohming
+them.
+
+**One adapter, one pair at a time.** Comparing two buses means probing pair A,
+noting what's there, then pair B. Sequential and slower, but it answers the
+cluster question either way. (Merope could be a second interface later —
+watching two buses at once is what a transparent gateway has to do anyway,
+and it's hardware you already own.)
+
+### Either way
 
 **Terminator switch OFF.** The car's bus already has its two 120 Ω. A third
 drops it to 40 Ω and the transceivers can't pull dominant.
@@ -137,7 +180,9 @@ a candidate — the tool records the difference, and so does the registry.
 - Back-probe pins or fine solid wire
 - Plastic trim tools for the shroud
 - The harness pinout, downloaded before you leave — no signal in a car park
-- A multimeter, to check 60 Ω across the pair before connecting anything
+- **A multimeter** — it does double duty now: 60 Ω confirms a pair is a
+  live CAN bus before you connect, and sweeping an unknown connector for
+  60 Ω pairs is how you find the gateway's buses without a wiring diagram
 
 ## If you want diagnostics too, later
 
