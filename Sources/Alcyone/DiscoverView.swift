@@ -33,6 +33,7 @@ public struct DiscoverView: View {
     @State private var naming: DIDDelta?
     @State private var recorded: [String: String] = [:]
     @State private var failure: String?
+    @State private var reviewing = false
 
     enum Phase: Equatable {
         case idle, capturingBaseline, ready, capturingChange, results
@@ -58,8 +59,20 @@ public struct DiscoverView: View {
             }
             .background(Theme.background)
             .navigationTitle("Discover")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    if findingStore != nil {
+                        Button { reviewing = true } label: {
+                            Label("Findings", systemImage: "tag")
+                        }
+                    }
+                }
+            }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $reviewing) {
+            if let findingStore { FindingsView(store: findingStore) }
+        }
         .sheet(item: $naming) { delta in
             NameSheet(delta: delta, module: module) { name, note in
                 Task { await record(delta, name: name, note: note) }
