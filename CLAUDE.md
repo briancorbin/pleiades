@@ -129,6 +129,15 @@ swift run pleiades compare a.json b.json # diff two snapshots, no car needed
   leave the test bundle linked against the old layout — `swift test` then
   SIGSEGVs at load with `swift_retain` on an address that decodes to ASCII.
   `rm -rf .build`. It is not a real memory bug. This has bitten twice.
+- **gs_usb on macOS:** python-can does not expose listen-only, and
+  `GsUsb.start()` opens with a USB reset after which macOS reports a kernel
+  driver libusb can't detach — errno 13, then a segfault, then the adapter
+  needs a physical replug. `tools/canbus/sniff.py` works around both: the
+  mode command goes as a direct control transfer, and
+  `is_kernel_driver_active` is neutered on Darwin. **Always read
+  `device_flags` back** — the hardware masks off features it lacks, so a
+  silent downgrade to normal mode is the failure mode, and normal mode emits
+  error frames onto a live car at the wrong bitrate.
 - **Boolean encoding is per-module.** `0x75A` uses `00`/`FF`; `0x788` uses
   `01`/`02`. A "non-zero means true" decoder reports every unfastened
   seatbelt as fastened.
